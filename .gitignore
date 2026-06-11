@@ -1,0 +1,13 @@
+# Saved planning blueprint — kept local, not tracked
+PLAN.md
+
+# Virtual environment — rebuildable from pyproject.toml, never committed
+.venv/
+
+# Personal data — your docs, the vector DB, traces, drafts, memory
+knowledge_base/
+data/
+
+# Python caches
+__pycache__/
+*.pyc
