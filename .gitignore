@@ -14,3 +14,6 @@ __pycache__/
 
 # config.toml is the user-editable config file. We want to ignore it so that users can have their own local settings without affecting others.
 config.toml
+
+# agent_session_id is just the current session ID for the agent. It can be regenerated and doesn't need to be tracked.
+agent_session_id.txt
