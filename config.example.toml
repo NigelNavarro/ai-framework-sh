@@ -1,0 +1,27 @@
+  # config.example.toml — template of every available setting.
+  #
+  # To use:  copy this to "config.toml" and change what you want.
+  #   cp config.example.toml config.toml
+  #
+  # This example is committed to git so anyone can see what iss configurable.
+  # The values below are the same defaults baked into framework/config.py, so
+  # copying this file as-is changes nothing until you edit a value.
+
+  # --- Model runtime ---
+  model       = "gemma4:latest"
+  embed_model = "nomic-embed-text"
+  ollama_host = "http://localhost:11434"
+
+  # --- Knowledge / RAG ---
+  chunk_size    = 1000
+  chunk_overlap = 200
+  top_k         = 5
+
+  # --- Agent loop ---
+  max_tool_rounds = 5
+
+  # --- Storage paths ---
+  # HEADS UP: see note #1 below — these behave differently from the others.
+  # Leave them commented to keep the safe project-root defaults from config.py.
+  # data_dir           = "data"
+  # knowledge_base_dir = "knowledge_base"

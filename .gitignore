@@ -11,3 +11,6 @@ data/
 # Python caches
 __pycache__/
 *.pyc
+
+# config.toml is the user-editable config file. We want to ignore it so that users can have their own local settings without affecting others.
+config.toml
