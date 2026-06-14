@@ -8,6 +8,7 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     # We'll add these as the plan introduces them:
     #   "ollama"     (Days 2-3, model runtime)
+    "requests", # Days 2-3, HTTP Calls to Ollama)
     #   "chromadb"   (Days 4-6, vector store)
     #   "pypdf"      (Days 4-6, PDF ingest)
 ]
