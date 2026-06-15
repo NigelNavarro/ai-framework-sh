@@ -4,11 +4,15 @@ Chat REPL (Read-Eval-Print Loop) for testing the model runtime. This is a simple
 
 Run: .venv/bin/python apps/cli/main.py
 """
+import time
 from framework.config import load_config
 from framework.models.ollama import OllamaModelClient
+from framework.observability.trace import Tracer
 
 # Build the model client once, from our configuration.
-client = OllamaModelClient(load_config())
+config = load_config() 
+client = OllamaModelClient(config)
+tracer = Tracer(config) # The Tracer wraps the model client to record all interactions for observability.
 
 print(f"You are now chatting with {client.model}. Type 'exit' or 'quit' to stop.\n")
 
@@ -32,12 +36,25 @@ while True:
 
     # Evaluate and Print:
     # Send the full conversation history to the model and stream its reply.
-    print(f"{client.model}> ", end="", flush=True) # Print the model's name as a prompt, and flush to ensure it appears immediately.
+    print(f"{client.model}> ", end="", flush=True)
     reply = ""
+    start = time.perf_counter() # Start the Stopwatch
+    # Stream the model's reply piece by piece as it is generated. This allows us to see the response in real time, token by token, instead of waiting for the full answer. The method returns an iterator that produces strings (chunks of the reply) one at a time.
     for chunk in client.chat_stream(messages):
-        print(chunk, end="", flush=True)
-        reply += chunk
+        print(chunk, end="", flush=True) # Print each chunk of the model's reply as it arrives, without adding a newline, and flush to show it immediately.
+        reply += chunk # Accumulate the full reply in case we want to use it later. 
+    latency_s = time.perf_counter() - start # Stop the Stopwatch; calculate latency in seconds.
     print("\n")
+
+    # Record what just happened in the Tracer for observability. This includes the model name, the user's message, the length of the model's reply, and the latency of the response.
+    tracer.record (
+        {
+            "model": client.model,
+            "user_msg": user_input,
+            "reply_chars": len(reply),
+            "latency_s": round(latency_s,3,) # Record latency rounded to 3 decimal places for readability.
+        }
+    )
 
     # Record the model's fully reply for the next turn's context.
     messages.append({"role": "assistant", "content": reply})
