@@ -3,7 +3,7 @@
   # To use:  copy this to "config.toml" and change what you want.
   #   cp config.example.toml config.toml
   #
-  # This example is committed to git so anyone can see what iss configurable.
+  # This example is committed to git so anyone can see what is configurable.
   # The values below are the same defaults baked into framework/config.py, so
   # copying this file as-is changes nothing until you edit a value.
 
