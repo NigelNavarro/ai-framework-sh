@@ -1,9 +1,11 @@
 """
-Day 1: Smoke Test
-The smoke test is a simple script that imports the framework and prints the configuration. Let's see if we can reach the LLM (Ollama) and get a response.
+Author: Nigel J. Navarro
+Smoke Test: Framework Connectivity
 
-Throwaway connectivity check. This is not a part of the framework.
-Uses only the standard libary (no `ollama` package yet). Currently dependency free.
+The smoke test is a simple script that imports the framework and prints the configuration. 
+We want to see if we can reach the LLM (Ollama) and get a response.
+This is otherwise a throwaway connectivity check. This is not a part of the framework.
+Uses only the standard libary (no `ollama` package yet). There are no dependencies.
 
 Run: .venv/bin/python smoke_test.py
 """
