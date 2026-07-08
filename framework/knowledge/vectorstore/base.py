@@ -1,7 +1,7 @@
 """
 Author: Nigel J. Navarro
-
 The VectorStore Interface
+
 Like the ModelClient for models, this abstraction makes the storage backend a replaceable component. The RAG pipeline depends on this interface.
 Future backend implementations will be able to use this same interface.
 """

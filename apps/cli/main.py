@@ -10,10 +10,13 @@ Run: .venv/bin/python apps/cli/main.py <command> [args]
 """
 import argparse # For parsing command-line arguments
 import time     # For measuring latency of model responses
+from pathlib import Path # For handling file system paths in a platform-independent way
 
 from framework.config import load_config
 from framework.models.ollama import OllamaModelClient
 from framework.observability.trace import Tracer
+from framework.knowledge.ingest import SUPPORTED_EXTENSIONS, ingest_file, ingest_folder
+from framework.knowledge.vectorstore import ChromaVectorStore
 
 def cmd_chat(config):
     """
@@ -35,7 +38,7 @@ def cmd_chat(config):
 
         messages.append({"role": "user", "content": user_input})
 
-        print(f"{client.model}>  ", end="", flush=True)
+        print(f"{client.model}> ", end="", flush=True)
         reply = "" # Accumulate the full reply in case we want to use it later.
         start = time.perf_counter() # Start the Stopwatch
         for chunk in client.chat_stream(messages):
@@ -53,6 +56,46 @@ def cmd_chat(config):
 
         messages.append({"role": "assistant", "content": reply}) # Record the model's fully reply for the next turn's context.
 
+def cmd_ingest(config, path):
+    """
+    Build the knowledge base from a file or a folder of documents.
+    
+    Read the given path, then chunk each document, embed each chunk, and then store the vectors in a vector DB for later retrieval.
+    This is the first stage of the RAG pipeline.
+    """
+    path = Path(path) # Converts the string path into a Path object, as `argparse` returns strings. This allows us to use Path methods and properties throughout the ingest logic without having to convert it repeatedly. It also makes it easier to handle relative vs absolute paths, and to join paths in a platform-independent way.
+    if not path.exists():
+        print(f"Error: path '{path}' not found.")
+        return
+    
+    # Decision: Walk an entire folder, or read a single supported file
+    if path.is_dir():
+        chunks = ingest_folder(path, config.chunk_size, config.chunk_overlap)
+    elif path.is_file() and path.suffix.lower() in SUPPORTED_EXTENSIONS:
+        chunks = ingest_file(path, config.chunk_size, config.chunk_overlap)
+    else:
+        print(f"Error: path '{path}' is not a supported file or folder.\n Supported file types: {', '.join(sorted(SUPPORTED_EXTENSIONS))}")
+        return
+    
+    if not chunks: # If no supported files were found, we print a message and return early.
+        print(f"No supported files ({', '.join(sorted(SUPPORTED_EXTENSIONS))}) found in {path}.")
+        return
+    print(f"Read {len(chunks)} chunks from {path}. Embedding...")
+
+    # Client & Store are built once, and after the file(s) obtained above are validated.
+    client = OllamaModelClient(config) # Build the model client once. Provides embed()
+    store = ChromaVectorStore(config) # Build the vector store client once. Provides add()
+
+    # EMBED
+    # We extract the text from each chunk and send it to the model's embed() function, which returns a list of embeddings (vectors) corresponding to each chunk.
+    texts = [c.text for c in chunks]
+    embeddings = client.embed(texts)
+
+    # STORE
+    store.add(chunks, embeddings)
+    print(f"Done. Stored {len(chunks)} chunks in the knowledge base.")
+
+
 def main():
     # Build the top-level parser  and a slot for the subcommands ("verbs")
     parser = argparse.ArgumentParser(
@@ -64,12 +107,18 @@ def main():
     # Register the "chat" subcommand (ingest/ask will get added here in the future)
     subparsers.add_parser("chat", help="Start an interactive chat REPL.")
 
+    # Register the "ingest" subcommand
+    ingest_parser = subparsers.add_parser("ingest", help="Ingest a file or folder of documents into the knowledge base.")
+    ingest_parser.add_argument("path", help="Path to the file or folder of documents to ingest.")
+
     args = parser.parse_args()  # Parse the command-line arguments
     config = load_config()      # Load the configuration (e.g. model settings, API keys, etc.)
 
     # Dispatch to the right function based on the chosen subcommand. For now, we only have "chat".
     if args.command == "chat":
         cmd_chat(config)
+    elif args.command == "ingest":
+        cmd_ingest(config, args.path)
 
 if __name__ == "__main__":
     main() # Run the CLI entry point
@@ -99,4 +148,12 @@ In practice:
   - If some other file did `import apps.cli.main`, then `__name__` is "apps.cli.main", so the guard is false, and main() does not run. 
 
 Wrapping everything in functions means nothing executes on import. The file only does something when you explicitly run it and give it a command. This makes it clean and predictable. We didn't need it before because the old REPL was top level code that ran on site as is. Now that we have reusable functions and a dispatcher, we have to implement the guard. 
+NEW 07--08-2026
+cmd_ingest(file, path) is heavily upgraded. It is a new entry point for the first stage of the RAG pipeline. Details:
+  - It can now read a single file or an entire folder of documents, chunk them, embed them, and store them in a vector database. 
+  - The function is designed to be flexible and robust, handling various edge cases like unsupported file types and empty folders gracefully. 
+  - It also provides clear feedback to the user about what it is performing, including how many chunks were read and stored
+This makes it easier to build a knowledge base from a variety of document sources.
+`ingest_parser = subparsers.add_parser()` help now cites file or folder ingestion.
+Dispatch also changed to path: cmd_ingest(config, args.path)
 """
