@@ -17,6 +17,8 @@ from framework.models.ollama import OllamaModelClient
 from framework.observability.trace import Tracer
 from framework.knowledge.ingest import SUPPORTED_EXTENSIONS, ingest_file, ingest_folder
 from framework.knowledge.vectorstore import ChromaVectorStore
+from framework.knowledge.retrieve import Retriever
+from framework.agent.context import build_messages
 
 def cmd_chat(config):
     """
@@ -95,6 +97,49 @@ def cmd_ingest(config, path):
     store.add(chunks, embeddings)
     print(f"Done. Stored {len(chunks)} chunks in the knowledge base.")
 
+def cmd_ask(config, question):
+    """
+    Answer a question from the knowledge base using RAG with citations (read-only cited Q&A).
+
+    This is the bridge that ties the RAG pipeline together.
+    Retrieve relevant chunks -> Assemble a grounded, cite-intructed prompt -> Ask the model.
+    """
+    client = OllamaModelClient(config)
+    store = ChromaVectorStore(config)
+    retriever = Retriever(client, store, config.top_k) # Composes the model and vector store into a retriever that can find relevant chunks for a given question.
+    tracer = Tracer(config) # The Tracer wraps the model client to record all interactions for observability.
+
+    # RETRIEVE - Embed the question, then pull the nearest stored chunks
+    chunks = retriever.retrieve(question)
+    if not chunks:
+        print("No relevant information found. Has anything been ingested yet? Try: ingest <path>")
+        return
+    
+    # ASSEMBLE - Build the system & user messages that ground the model in these chunks and instruct it to cite them by number.
+    messages = build_messages(question, chunks)
+
+    # ASK - Send one non-streaing call to the model so taht we have the full answer before printing citations.
+    start = time.perf_counter() # Start the Stopwatch
+    answer = client.chat(messages) # The non-streaming call returns the full answer in one go, which allows us to print citations after the answer is complete.
+    latency_s = time.perf_counter() - start # Stop the Stopwatch; calculate latency in seconds.
+
+    # PRINT - Provide the answer, then the source list. 
+    # The [n] here matches the [n] model. Both number the same chunks in the same order (as both enumerate starting from 1).
+    print(f"\n{answer}\n")
+    print("Sources: ")
+    for number, chunk in enumerate(chunks, start=1):
+        print(f"  [{number}]  {Path(chunk.source).name}  (chunk {chunk.chunk_idx})")
+    
+    # TRACE - Record what was retrieved and why for observability.
+    tracer.record({
+        "command": "ask",
+        "model": client.model,
+        "question": question,
+        "retrieved": [f"{Path(c.source).name} (chunk {c.chunk_idx})" for c in chunks],
+        "answer_chars": len(answer),
+        "latency_s": round(latency_s, 3),
+    })
+
 
 def main():
     # Build the top-level parser  and a slot for the subcommands ("verbs")
@@ -111,14 +156,20 @@ def main():
     ingest_parser = subparsers.add_parser("ingest", help="Ingest a file or folder of documents into the knowledge base.")
     ingest_parser.add_argument("path", help="Path to the file or folder of documents to ingest.")
 
-    args = parser.parse_args()  # Parse the command-line arguments
-    config = load_config()      # Load the configuration (e.g. model settings, API keys, etc.)
+    # Register the "ask" subcommand
+    ask_parser = subparsers.add_parser("ask", help="Ask a question and get a cited answer from the knowledge base.")
+    ask_parser.add_argument("question", help="The question to answer (wrap it in quotes)")
+
+    args = parser.parse_args() # Parse the command-line arguments; everything above must be registered before this line
+    config = load_config()     # Load the configuration (e.g. model settings, API keys, etc.)
 
     # Dispatch to the right function based on the chosen subcommand. For now, we only have "chat".
     if args.command == "chat":
         cmd_chat(config)
     elif args.command == "ingest":
         cmd_ingest(config, args.path)
+    elif args.command == "ask":
+        cmd_ask(config, args.question)
 
 if __name__ == "__main__":
     main() # Run the CLI entry point
@@ -148,7 +199,7 @@ In practice:
   - If some other file did `import apps.cli.main`, then `__name__` is "apps.cli.main", so the guard is false, and main() does not run. 
 
 Wrapping everything in functions means nothing executes on import. The file only does something when you explicitly run it and give it a command. This makes it clean and predictable. We didn't need it before because the old REPL was top level code that ran on site as is. Now that we have reusable functions and a dispatcher, we have to implement the guard. 
-NEW 07--08-2026
+NEW 07-08-2026
 cmd_ingest(file, path) is heavily upgraded. It is a new entry point for the first stage of the RAG pipeline. Details:
   - It can now read a single file or an entire folder of documents, chunk them, embed them, and store them in a vector database. 
   - The function is designed to be flexible and robust, handling various edge cases like unsupported file types and empty folders gracefully. 
@@ -156,4 +207,12 @@ cmd_ingest(file, path) is heavily upgraded. It is a new entry point for the firs
 This makes it easier to build a knowledge base from a variety of document sources.
 `ingest_parser = subparsers.add_parser()` help now cites file or folder ingestion.
 Dispatch also changed to path: cmd_ingest(config, args.path)
+NEW 07-10-2026
+Retriever(client, store, config.top_k) n - This is where we are composing the model and storing into the retriever.
+retriever.retrieve(question) - Handles the question embeddding and internal vector search so that `cmd_ask` doesn't touch the vectors directly.
+`format_sources` - Comes from context.py via our `build_messages` function import. It numbers the chunks with `enumerate(..., start=1)` so that the model and the printed sources match. The model is instructed to cite chunks by number, and we print the same numbers for clarity.
+  - This is for our observability purposes. The safeguard here is simply: Feed the exact same chunks list, untouched, to both `build_messages` and the print loop.
+`"retrieved": [f"{Path(c.source).name} (chunk {c.chunk_idx})" for c in chunks],` - This is a list comprehension that formats the retrieved chunks for tracing. It creates a list of strings, each representing a chunk's source file name and its index within that file. 
+  - This provides clear traceability of what information was used to answer the question.
+`ask_parser.add_argument("question", help="The questiuon to answer (wrap it in quotes)")` - This is the current rendition for now. `ask` takes one positional question, and the shell needs quotes since questions have spaces within them.
 """
