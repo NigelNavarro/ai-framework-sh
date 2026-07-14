@@ -1,0 +1,70 @@
+"""
+Author: Nigel J. Navarro
+Built-In Tools
+
+Tool objects are built here, then registered once. They sit in the registry until the model chooses to call one.
+
+The current version builds the following tools:
+  - `search_knowledge`: Wraps the existing Retriever as a Tool so the model can choose to search the knowledge base for relevant information to answer a question
+
+This is the bridge between our framework's capabilities and the model's ability to call them. The model sees only the tool's schema (name, description, parameters) and calls it by name with arguments. The framework handles the rest. This does not run the model or the Retriever; it just builds the tools and registers them for later use.
+"""
+from __future__ import annotations # Store annotations as strings so modern hints (list[str], etc.) work without runtime cost.
+from pathlib import Path
+
+from framework.knowledge.retrieve import Retriever
+from framework.tools.registry import Tool
+
+def make_search_knowledge_tool(retriever: Retriever) -> Tool:
+    """
+    Builds the `search_knowledge` tool, and binds it to a specific Retriever. Runs once at wiring time.
+
+    The Retriever is composed of a ModelClient and a VectorStore that embeds a question and returns the nearest stored chunks. Since the model can only pass a `query` string, we take in the Retriever here as an argument and define the handler inside this function where it can see it (otherwise known as a closure). This is a common pattern in Python for creating closures that capture variables from their enclosing scope. The Retriever gets baked into the returned tool, and the model never has to know that it exists.
+    """
+
+    def search_knowledge(query: str) -> str:
+        """
+        The handler for the `search_knowledge` tool. It takes in the `query` string, uses the Retriever to find relevant chunks, and returns them as a single string. This is because the tool result is text that the model can read. It cannot read a list of chunks.
+        """
+        chunks = retriever.retrieve(query) # Use the Retriever to get the most relevant chunks for the query.
+        if not chunks:
+            return "No relevant information found in the knowledge base."
+        
+        # Formats the return
+        # Example:
+        #   [3] frankenstein.txt (chunk 204):
+        #   It was on a...
+        return "\n\n".join(
+            f"[{number}] {Path(chunk.source).name} (chunk {chunk.chunk_idx}):\n{chunk.text}"
+            for number, chunk in enumerate(chunks, start=1)
+        )
+    
+    # The schema for the `search_knowledge` tool. This is what the model sees and uses to decide when and how to call it. 
+    # A Python dict/list/str maps almost 1:1 onto JSON's object/array/string. This is why we author it as a dict, and the framework will convert and send it to the model as JSON.
+    parameters = {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "The question or query to search for in the knowledge base."
+            }
+        },
+        "required": ["query"]
+    }
+    
+    # Bundles the handler and the schema into a Tool object and returns it. The model will see the schema and call the handler when it wants to use this tool.
+    return Tool(
+        name="search_knowledge",
+        description=(
+            "Search the user's ingested documents (the knowledge base) for relevant information to answer the query. Use this whenever answering needs information from those documents rather than general knowledge."
+        ),
+        parameters=parameters,
+        handler=search_knowledge,
+    )
+
+"""
+Notes
+This is a builder file. The `make_search_knowledge_tool` function takes in a Retriever and returns a Tool object that wraps it. The model sees only the schema (name, description, parameters) and calls the handler when it wants to use this tool. The Retriever is baked into the handler via closure, so the model never has to know about it.
+The handler needs a Retriever to do its job, but the model only supplies a `query` string. Passing the Retriever into the outer function lets the inner handler use it without it being a model facing argument. 
+When the model calls the tool, it sends its arguments as a dict keyed by the names it read in our schema. Since our schema declares a single `query` string, the model will send a dict like `{"query": "Frankenstein"}`. Then, the `**` unpacks that dict into keyword arguments for the handler, so it is equivalent to calling `search_knowledge(query="Frankenstein")`. Thus, the schema name must match the handler's parameter name in order for this handoff to function correctly. 
+"""
