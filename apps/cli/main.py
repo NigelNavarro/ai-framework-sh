@@ -4,7 +4,8 @@ CLI Entry Point for the ai-framework-sh assistant.
 
 Subcommands:
     chat        Start a REPL (Read-Eval-Print Loop) for chatting with the model.
-    (ingest, ask -- not implemented yet)
+    ingest      Build the knowledge base from a file or a folder of documents.
+    ask         Answer a question from the knowledge base using RAG with citations (read-only cited Q&A).
 
 Run: .venv/bin/python apps/cli/main.py <command> [args]
 """
@@ -19,6 +20,9 @@ from framework.knowledge.ingest import SUPPORTED_EXTENSIONS, ingest_file, ingest
 from framework.knowledge.vectorstore import ChromaVectorStore
 from framework.knowledge.retrieve import Retriever
 from framework.agent.context import build_messages
+from framework.agent.loop import run_agent
+from framework.tools.registry import ToolRegistry
+from framework.tools.builtin import make_search_knowledge_tool
 
 def cmd_chat(config):
     """
@@ -140,6 +144,39 @@ def cmd_ask(config, question):
         "latency_s": round(latency_s, 3),
     })
 
+def cmd_agent(config, question):
+    """
+    Answer a question using the agentic loop.
+    The model decides whether to call `search_knowledge` (whereas cmd_ask always calls it). 
+    The model can call the tool multiple times, or not at all, and can also answer without calling it.
+    Implementation is similar to cmd_ask, but the retrieval is wrapped as a tool, and run_agent() steers the behavioral loop (think -> act -> observe -> repeat).
+    """
+    client = OllamaModelClient(config)
+    store = ChromaVectorStore(config)
+    retriever = Retriever(client, store, config.top_k)
+    tracer = Tracer(config)
+
+    # Build the tool registry and register search_knowledge as a tool, binding it to the retriever.
+    # Retrieval stops being automatic, and instead becomes a tool that the model can choose to call.
+    registry = ToolRegistry()
+    registry.register(make_search_knowledge_tool(retriever))
+
+    # `run_agent` asks the model, runs any tool it requests, feeds results back, and returns the plain-text answer.
+    start = time.perf_counter()
+    answer = run_agent(client, registry, question, config.max_tool_rounds) 
+    latency_s = time.perf_counter() - start
+
+    print(f'\n{answer}\n')
+
+    # Trace - Retrieval happens inside the agent loop, so at this level, we can only record which tools were available, not the ones the model actually called.
+    tracer.record({
+        "command": "agent",
+        "model": client.model,
+        "question": question,
+        "tools_available": [schema['function']['name'] for schema in registry.schemas()],
+        "answer_chars": len(answer),
+        "latency_s": round(latency_s, 3),
+    })
 
 def main():
     # Build the top-level parser  and a slot for the subcommands ("verbs")
@@ -160,16 +197,22 @@ def main():
     ask_parser = subparsers.add_parser("ask", help="Ask a question and get a cited answer from the knowledge base.")
     ask_parser.add_argument("question", help="The question to answer (wrap it in quotes)")
 
+    # Register the "agent" subcommand
+    agent_parser = subparsers.add_parser("agent", help="Ask a question and let the model decide to search the knowledge base or not.")
+    agent_parser.add_argument("question", help="The question to ask the agent (wrap it in quotes).")
+
     args = parser.parse_args() # Parse the command-line arguments; everything above must be registered before this line
     config = load_config()     # Load the configuration (e.g. model settings, API keys, etc.)
 
-    # Dispatch to the right function based on the chosen subcommand. For now, we only have "chat".
+    # Dispatch to the right function based on the chosen subcommand.
     if args.command == "chat":
         cmd_chat(config)
     elif args.command == "ingest":
         cmd_ingest(config, args.path)
     elif args.command == "ask":
         cmd_ask(config, args.question)
+    elif args.command == "agent":
+        cmd_agent(config, args.question)
 
 if __name__ == "__main__":
     main() # Run the CLI entry point
@@ -215,4 +258,8 @@ retriever.retrieve(question) - Handles the question embeddding and internal vect
 `"retrieved": [f"{Path(c.source).name} (chunk {c.chunk_idx})" for c in chunks],` - This is a list comprehension that formats the retrieved chunks for tracing. It creates a list of strings, each representing a chunk's source file name and its index within that file. 
   - This provides clear traceability of what information was used to answer the question.
 `ask_parser.add_argument("question", help="The questiuon to answer (wrap it in quotes)")` - This is the current rendition for now. `ask` takes one positional question, and the shell needs quotes since questions have spaces within them.
+NEW 07-27-2026
+There are now two paths for answering questions: `ask` and `agent`. 
+  - `ask` is the original RAG pipeline. It always retrieves relevant chunks and instructs the model to cite them (Sources). The model cannot choose to ignore retrieval, and it cannot call retrieval multiple times.
+  - `agent` is the new agentic loop. It wraps retrieval as a tool that the model can choose to call or not, and it can call it multiple times if it wants. This is more flexible and allows for more complex reasoning, but it also requires careful prompt design to ensure the model behaves as intended.
 """
