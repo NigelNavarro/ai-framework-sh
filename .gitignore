@@ -29,3 +29,6 @@ self-hosted-ai-framework-vs-application.md
 self-hosted_AI-assist-arch-diagram.png
 self_hosted_ai_assistant_research_brief.pdf
 ChatGPT-HowAgenticSystems+MCPWorks.png
+
+# Scratch Tests & Learning Scripts - Kept Local, Not a part of the Framework
+scratch_*.py
