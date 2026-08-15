@@ -28,7 +28,7 @@ class MemoryStore:
     Dual store for durable facts; memory.json and a Chroma collection for semantic recall. Takes in a ModelClient so it stays backend-agnostic, like Retriever().
     """
 
-    def __init__(self, config: Config, client: ModelClient):
+    def __init__(self, config: Config, client: ModelClient | None = None): # makes client optional, but raises an exception for models that require it.
         self.client = client                                    # used for an interface, embed()
         self.embed_model = config.embed_model  
         self.json_path = config.data_dir / "memory.json"        # The human-readable JSON file for facts
@@ -90,6 +90,9 @@ class MemoryStore:
         self.facts.append(fact) # Add the new fact to the in-memory list
         self._save()            # Persist the in-memory list to memory.json
 
+        if self.client is None:
+            raise ValueError("add() needs a ModelClient to embed the fact. Please construct MemoryStore with a client.")
+
         # Write 2: Chroma (recall index)
         # Embed the text into one vector. Wrap in a list because embed() expects a list of texts, 
         # and take the first (and only) result (like Retriever).
@@ -113,6 +116,9 @@ class MemoryStore:
         if not self.facts:
             return [] # If there are no facts to recall, return an empty list. Skips embed + query if there is nothing to search.
 
+        if self.client is None:
+            raise ValueError("recall() needs a ModelClient to embed the query. Please construct MemoryStore with a client.")
+        
         # Embed the query into one vector. Wrap in a list because embed() expects a list of texts, 
         # and take the first (and only) result. Query text -> One Vector (like Retriever)
         query_embedding = self.client.embed([query])[0]

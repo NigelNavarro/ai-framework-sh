@@ -22,7 +22,8 @@ from framework.knowledge.retrieve import Retriever
 from framework.agent.context import build_messages
 from framework.agent.loop import run_agent
 from framework.tools.registry import ToolRegistry
-from framework.tools.builtin import make_search_knowledge_tool
+from framework.tools.builtin import make_search_knowledge_tool, make_remember_tool, make_recall_tool
+from framework.memory.store import MemoryStore
 
 def cmd_chat(config):
     """
@@ -156,10 +157,13 @@ def cmd_agent(config, question):
     retriever = Retriever(client, store, config.top_k)
     tracer = Tracer(config)
 
-    # Build the tool registry and register search_knowledge as a tool, binding it to the retriever.
-    # Retrieval stops being automatic, and instead becomes a tool that the model can choose to call.
+    # Build the tool registry. Retrieval stops being automatic, and becomes a tool the model can choose to call.
+    # It sits alongside the memory Read/Write tools.
+    memory = MemoryStore(config, client)    # Reuse the same client on L155 above for embedding memory facts to keep the model consistent across both knowledge and memory.
     registry = ToolRegistry()
     registry.register(make_search_knowledge_tool(retriever))
+    registry.register(make_remember_tool(memory))
+    registry.register(make_recall_tool(memory))
 
     # `run_agent` asks the model, runs any tool it requests, feeds results back, and returns the plain-text answer.
     start = time.perf_counter()
@@ -177,6 +181,35 @@ def cmd_agent(config, question):
         "answer_chars": len(answer),
         "latency_s": round(latency_s, 3),
     })
+
+def cmd_memory(config, action, memory_id):
+    """
+    These are the human controls for stored memory.
+    Allows the user to list all facts or delete one by ID.
+    These are not agent tools. They are our direct inspect/forget controls.
+
+    `list` reads memory.json, and `delete` removes by ID from JSON + Chroma.
+    No embedding happens here, so no model call is needed. This is a direct read/write to the memory store.
+    """
+    memory = MemoryStore(config)    # List/Delete never embed, so no client is needed.
+
+    if action == "list":
+        facts = memory.list()
+        if not facts:
+            print("No memories stored yet.")
+            return
+        for fact in facts:
+            print(f"{fact['id']}  ({fact['created_at']})")
+            print(f"    {fact['text']}")
+    elif action == "delete":
+        if not memory_id:
+            print("Error 'memory delete' needs an ID. Run `memory list` to see IDs.")
+            return
+        if memory.delete(memory_id):
+            print(f"Deleted memory {memory_id}")
+        else:
+            print(f"No memory found with id {memory_id}. Run `memory list` to see IDs.")
+
 
 def main():
     # Build the top-level parser  and a slot for the subcommands ("verbs")
@@ -201,6 +234,11 @@ def main():
     agent_parser = subparsers.add_parser("agent", help="Ask a question and let the model decide to search the knowledge base or not.")
     agent_parser.add_argument("question", help="The question to ask the agent (wrap it in quotes).")
 
+    # Register the "memory" subcommand (human inspect/forget controls)
+    memory_parser = subparsers.add_parser("memory", help="List or delete stored memories.")
+    memory_parser.add_argument("action", choices =["list", "delete"], help="List all memories, or delete one by ID.")
+    memory_parser.add_argument("id", nargs="?", help="The memory ID to delete (required for 'delete')")
+
     args = parser.parse_args() # Parse the command-line arguments; everything above must be registered before this line
     config = load_config()     # Load the configuration (e.g. model settings, API keys, etc.)
 
@@ -213,6 +251,8 @@ def main():
         cmd_ask(config, args.question)
     elif args.command == "agent":
         cmd_agent(config, args.question)
+    elif args.command == "memory":
+        cmd_memory(config, args.action, args.id)
 
 if __name__ == "__main__":
     main() # Run the CLI entry point
@@ -262,4 +302,13 @@ NEW 07-27-2026
 There are now two paths for answering questions: `ask` and `agent`. 
   - `ask` is the original RAG pipeline. It always retrieves relevant chunks and instructs the model to cite them (Sources). The model cannot choose to ignore retrieval, and it cannot call retrieval multiple times.
   - `agent` is the new agentic loop. It wraps retrieval as a tool that the model can choose to call or not, and it can call it multiple times if it wants. This is more flexible and allows for more complex reasoning, but it also requires careful prompt design to ensure the model behaves as intended.
+NEW 08-15-2026
+The `cmd_agent` command now also registers two new tools: `remember` and `recall`. These tools allow the model to store and retrieve facts or preferences about the user, enabling a more personalized and context-aware interaction. The `remember` tool saves information to a durable memory store, while the `recall` tool retrieves relevant facts based on a query. 
+This enhances the agent's capabilities by allowing it to maintain state across interactions, making it more effective in providing tailored responses.
+The original constructor `def __init__(self, config: Config, client: ModelClient):` made `client` a required parameter. I'm updating this to make client optional in MemoryStore.
+Furthermore, we will, raise an exception for the models that do require it. This ultimately accomplishes two things:
+1. It makes the type signature more honest (memory can exist without a model; only add/recall need one), and
+2. It ensures dependencies should be required only where actually used. I also feel better using this method wherever possible.
+The memory parser argument for "action" uses `choices =["list", "delete"]` which let's argparse validate the input for us. 
+The memory parser argument for "id" uses `nargs="?"` as an optional positional argument. This allows the user to omit the ID when listing memories, but requires it when deleting a specific memory. The code then checks if the ID is provided when the action is "delete" and provides an error message if it's missing.
 """
