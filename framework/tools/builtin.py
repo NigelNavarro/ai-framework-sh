@@ -5,26 +5,34 @@ Built-In Tools
 Tool objects are built here, then registered once. They sit in the registry until the model chooses to call one.
 
 The current version builds the following tools:
-  - `search_knowledge`: Wraps the existing Retriever as a Tool so the model can choose to search the knowledge base for relevant information to answer a question
+  - "search_knowledge": Wraps the existing Retriever as a Tool so the model can choose to search the knowledge base for relevant information to answer a question
+  - "make_remember_tool": Bound to MemoryStore, this lets the model save a durable fact/preference mid-conversation.
+  - "make_recall_tool": Bound to MemoryStore, this lets the model look up previously saved facts by meaning (semantic recall)
 
-This is the bridge between our framework's capabilities and the model's ability to call them. The model sees only the tool's schema (name, description, parameters) and calls it by name with arguments. The framework handles the rest. This does not run the model or the Retriever; it just builds the tools and registers them for later use.
+This is the bridge between our framework's capabilities and the model's ability to call them. 
+The model sees only the tool's schema (name, description, parameters) and calls it by name with arguments. The framework handles the rest. 
+This does not run the model or the Retriever; it just builds the tools and registers them for later use.
 """
 from __future__ import annotations # Store annotations as strings so modern hints (list[str], etc.) work without runtime cost.
 from pathlib import Path
 
 from framework.knowledge.retrieve import Retriever
 from framework.tools.registry import Tool
+from framework.memory.store import MemoryStore
 
 def make_search_knowledge_tool(retriever: Retriever) -> Tool:
     """
     Builds the `search_knowledge` tool, and binds it to a specific Retriever. Runs once at wiring time.
 
-    The Retriever is composed of a ModelClient and a VectorStore that embeds a question and returns the nearest stored chunks. Since the model can only pass a `query` string, we take in the Retriever here as an argument and define the handler inside this function where it can see it (otherwise known as a closure). This is a common pattern in Python for creating closures that capture variables from their enclosing scope. The Retriever gets baked into the returned tool, and the model never has to know that it exists.
+    The Retriever is composed of a ModelClient and a VectorStore that embeds a question and returns the nearest stored chunks. 
+    Since the model can only pass a `query` string, we take in the Retriever here as an argument and define the handler inside this function where it can see it (otherwise known as a closure). 
+    This is a common pattern in Python for creating closures that capture variables from their enclosing scope. The Retriever gets baked into the returned tool, and the model never has to know that it exists.
     """
 
     def search_knowledge(query: str) -> str:
         """
-        The handler for the `search_knowledge` tool. It takes in the `query` string, uses the Retriever to find relevant chunks, and returns them as a single string. This is because the tool result is text that the model can read. It cannot read a list of chunks.
+        The handler for the `search_knowledge` tool. It takes in the `query` string, uses the Retriever to find relevant chunks, and returns them as a single string. 
+        This is because the tool result is text that the model can read. It cannot read a list of chunks.
         """
         chunks = retriever.retrieve(query) # Use the Retriever to get the most relevant chunks for the query.
         if not chunks:
@@ -62,9 +70,93 @@ def make_search_knowledge_tool(retriever: Retriever) -> Tool:
         handler=search_knowledge,
     )
 
+def make_remember_tool(store: MemoryStore) -> Tool:
+    """
+    Builds the 'remember' tool, binding it to a MemoryStore.
+
+    Let's the model save a durable fact or preference mid-conversation. Wraps store.add, which writes to both memory.json and the Chroma memory collection.
+    This is our first tool that writes to the framework's state, but only inside data/ (no network or other writes elsewhere).
+    """
+
+    def remember(text: str) -> str:
+        """
+        The handler: save one fact to memory and confirm it back to the model.
+        """
+        store.add(text)
+        return f"Saved to memory: {text}" # Return a confirmation string to the model that the fact was saved.
+
+    parameters = {
+        "type": "object",
+        "properties": {
+            "text": {
+                "type": "string",
+                "description": "A fact or preference about the user worth remembering across sessions."
+            }
+        },
+        "required": ["text"]
+    }
+
+    return Tool(
+        name="remember",
+        description=(
+            "Save a durable fact or preference about the user so it persists across "
+            "sessions. Use when the user states a lasting preference, detail, or goal."
+        ),
+        parameters=parameters,
+        handler=remember,
+    )
+
+def make_recall_tool(store: MemoryStore) -> Tool:
+    """
+    Build the recall tool, binding it to a MemoryStore.
+    
+    This let's the model look up preivously saved facts by meaning (sematic recall).
+    Wraps store.recall, which embeds the query and returns the most relevant (nearest neighbor) saved facts.
+    """
+
+    def recall(query: str) -> str:
+        """
+        Handler: Fetch the relevant memories and return them as text for the model.
+        """
+        facts = store.recall(query)
+        if not facts:
+            return "No relevant memories found."
+        # One fact per line, numbered for clarity. The model can read this and decide which to use.
+        return "\n".join(f"[{number}] {fact}" for number, fact in enumerate(facts, start=1))
+
+    parameters = {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "What to look up in the user's saved memories."
+            }
+        },
+        "required": ["query"],
+    }
+
+    return Tool(
+        name="recall",
+        description=(
+            "Look up previously saved facts or preferences about the user by meaning (semantic recall). "
+            "Use when the model needs to remember something the user has told it in a previous session."
+        ),
+        parameters=parameters,
+        handler=recall
+    )
+
+
+
 """
 Notes
-This is a builder file. The `make_search_knowledge_tool` function takes in a Retriever and returns a Tool object that wraps it. The model sees only the schema (name, description, parameters) and calls the handler when it wants to use this tool. The Retriever is baked into the handler via closure, so the model never has to know about it.
+This is a builder file. The `make_search_knowledge_tool` function takes in a Retriever and returns a Tool object that wraps it. 
+The model sees only the schema (name, description, parameters) and calls the handler when it wants to use this tool. The Retriever is baked into the handler via closure, so the model never has to know about it.
 The handler needs a Retriever to do its job, but the model only supplies a `query` string. Passing the Retriever into the outer function lets the inner handler use it without it being a model facing argument. 
-When the model calls the tool, it sends its arguments as a dict keyed by the names it read in our schema. Since our schema declares a single `query` string, the model will send a dict like `{"query": "Frankenstein"}`. Then, the `**` unpacks that dict into keyword arguments for the handler, so it is equivalent to calling `search_knowledge(query="Frankenstein")`. Thus, the schema name must match the handler's parameter name in order for this handoff to function correctly. 
+When the model calls the tool, it sends its arguments as a dict keyed by the names it read in our schema. 
+Since our schema declares a single `query` string, the model will send a dict like `{"query": "Frankenstein"}`. Then, the `**` unpacks that dict into keyword arguments for the handler, 
+so it is equivalent to calling `search_knowledge(query="Frankenstein")`. Thus, the schema name must match the handler's parameter name in order for this handoff to function correctly. 
+NEW 08/15/26
+The `remember`'s handler returns a confirmation. 
+`store.add` returns the id, but the model doesn't need a UUID, but that the saved worked. This is why we say "Saved to memory:..."
+ A tool's return value goes back into the model's context as an observation. A clear confirmation lets the model tell the user that the model acknowledged and will remember it. 
 """
