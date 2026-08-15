@@ -3,15 +3,19 @@ Author: Nigel J. Navarro
 CLI Entry Point for the ai-framework-sh assistant.
 
 Subcommands:
-    chat        Start a REPL (Read-Eval-Print Loop) for chatting with the model.
-    ingest      Build the knowledge base from a file or a folder of documents.
-    ask         Answer a question from the knowledge base using RAG with citations (read-only cited Q&A).
+    chat                    Start an interactive chat REPL (Read-Eval-Print Loop) with the model.
+    ingest <path>           Ingest a file or folder of documents into the knowledge base (chunk, embed, store).
+    ask "<question>"        Retrieve and answer with citations (always searches the knowledge base)
+    agent "<question>"      The agentic loop: the model decides which tools to use (search_knowledge, remember, recall, draft_document)
+    memory list|delete <id> Inspect or forget stored memories
+    trace tail [-n N]       Show the most recent trace events (default 10)
 
 Run: .venv/bin/python apps/cli/main.py <command> [args]
 """
-import argparse # For parsing command-line arguments
-import time     # For measuring latency of model responses
-from pathlib import Path # For handling file system paths in a platform-independent way
+import argparse             # For parsing command-line arguments
+import json                 # For reading trace lines (JSON per line) back into dicts
+import time                 # For measuring latency of model responses
+from pathlib import Path    # For handling file system paths in a platform-independent way
 
 from framework.config import load_config
 from framework.models.ollama import OllamaModelClient
@@ -22,7 +26,7 @@ from framework.knowledge.retrieve import Retriever
 from framework.agent.context import build_messages
 from framework.agent.loop import run_agent
 from framework.tools.registry import ToolRegistry
-from framework.tools.builtin import make_search_knowledge_tool, make_remember_tool, make_recall_tool
+from framework.tools.builtin import make_search_knowledge_tool, make_remember_tool, make_recall_tool, make_draft_document_tool
 from framework.memory.store import MemoryStore
 
 def cmd_chat(config):
@@ -35,7 +39,8 @@ def cmd_chat(config):
 
     print(f"You are now chatting with {client.model}. Type 'exit' or 'quit' to stop.\n")
 
-    messages = [] # Conversation History: A list of messages that the model expects. Each message is a dict with "role" (e.g. "user", "assistant") and "content" (the text). This is the chat's memory. We resend the whole thing every turn so that the model has context.
+    messages = []   # Conversation History: A list of messages that the model expects. Each message is a dict with "role" (e.g. "user", "assistant") and "content" (the text). 
+                    # This is the chat's memory. We resend the whole thing every turn so that the model has context.
 
     while True:
         user_input = input(">you ") # Read. Wait for the user to type and press Enter.
@@ -159,11 +164,12 @@ def cmd_agent(config, question):
 
     # Build the tool registry. Retrieval stops being automatic, and becomes a tool the model can choose to call.
     # It sits alongside the memory Read/Write tools.
-    memory = MemoryStore(config, client)    # Reuse the same client on L155 above for embedding memory facts to keep the model consistent across both knowledge and memory.
+    memory = MemoryStore(config, client)                        # Reuse the same client on L155 above for embedding memory facts to keep the model consistent across both knowledge and memory.
     registry = ToolRegistry()
-    registry.register(make_search_knowledge_tool(retriever))
-    registry.register(make_remember_tool(memory))
-    registry.register(make_recall_tool(memory))
+    registry.register(make_search_knowledge_tool(retriever))    # Register the retrieval tool so the model can call it to search the knowledge base.
+    registry.register(make_remember_tool(memory))               # Register the remember tool so the model can call it to store facts in memory.
+    registry.register(make_recall_tool(memory))                 # Register the recall tool so the model can call it to retrieve facts from memory.
+    registry.register(make_draft_document_tool(config))         # Register the draft_document tool so the model can use it to create draft documents.
 
     # `run_agent` asks the model, runs any tool it requests, feeds results back, and returns the plain-text answer.
     start = time.perf_counter()
@@ -210,6 +216,40 @@ def cmd_memory(config, action, memory_id):
         else:
             print(f"No memory found with id {memory_id}. Run `memory list` to see IDs.")
 
+def cmd_trace(config, count):
+    """
+    View the most recent trace events (the 'tail' of the log).
+
+    Reads the newest data/traces/<date>.jsonl file and prints its last 'count' events.
+    This is the observability payoff which allows us to see what every chat/ask/agent command actually performed.
+    """
+    traces_dir = config.data_dir / "traces"
+    if not traces_dir.exists():
+        print("No traces found yet. Run a command first (chat, ask, agent) to generate traces.")
+        return
+
+    # Filenames are ISO dates (e.g. `2026-08-15.jsonl`), which sort chronologically as strings
+    # The last one is the most recent day's log.
+    trace_files = sorted(traces_dir.glob("*.jsonl"))        # trace_files is a sorted list of Path objects for each trace file in the traces directory.
+    if not trace_files:
+        print("No trace files found.")
+        return
+    latest = trace_files[-1]                                # Get the most recent trace file (the last one in the sorted list).
+
+    lines = latest.read_text(encoding="utf-8").splitlines() # Read the file and split it inoto one event per line.
+    recent = lines[-count:]                                 # Get the last 'count' lines (the most recent events).
+
+    print(f"Showing last {len(recent)} of {len(lines)} events from {latest.name}:\n")
+    for line in recent:
+        event = json.loads(line)                            # event turns JSON text into a dict
+        timestamp = event.get("timestamp", "?")
+        label = event.get("command", event.get("model", "event"))
+        print(f"{timestamp}  [{label}]")
+        for key, value in event.items():
+            if key in ("timestamp", "command"):
+                continue
+            print(f"    {key}: {value}")
+        print()
 
 def main():
     # Build the top-level parser  and a slot for the subcommands ("verbs")
@@ -239,6 +279,11 @@ def main():
     memory_parser.add_argument("action", choices =["list", "delete"], help="List all memories, or delete one by ID.")
     memory_parser.add_argument("id", nargs="?", help="The memory ID to delete (required for 'delete')")
 
+    # Register the 'trace' subcommand (observability)
+    trace_parser = subparsers.add_parser("trace", help="View recent trace events.")
+    trace_parser.add_argument("action", choices=["tail"], help="tail: show the most recent events")
+    trace_parser.add_argument("-n", "--count", type=int, default=10, help="How many recent events to show (default 10)")
+
     args = parser.parse_args() # Parse the command-line arguments; everything above must be registered before this line
     config = load_config()     # Load the configuration (e.g. model settings, API keys, etc.)
 
@@ -253,6 +298,8 @@ def main():
         cmd_agent(config, args.question)
     elif args.command == "memory":
         cmd_memory(config, args.action, args.id)
+    elif args.command == "trace":
+        cmd_trace(config, args.count)
 
 if __name__ == "__main__":
     main() # Run the CLI entry point
@@ -281,7 +328,7 @@ In practice:
   - `Run python apps/cli/main.py chat` → Python sets `__name__` to "__main__". If the guard is true, then main() runs.
   - If some other file did `import apps.cli.main`, then `__name__` is "apps.cli.main", so the guard is false, and main() does not run. 
 
-Wrapping everything in functions means nothing executes on import. The file only does something when you explicitly run it and give it a command. This makes it clean and predictable. We didn't need it before because the old REPL was top level code that ran on site as is. Now that we have reusable functions and a dispatcher, we have to implement the guard. 
+Wrapping everything in functions means nothing executes on import. The file onl y does something when you explicitly run it and give it a command. This makes it clean and predictable. We didn't need it before because the old REPL was top level code that ran on site as is. Now that we have reusable functions and a dispatcher, we have to implement the guard. 
 NEW 07-08-2026
 cmd_ingest(file, path) is heavily upgraded. It is a new entry point for the first stage of the RAG pipeline. Details:
   - It can now read a single file or an entire folder of documents, chunk them, embed them, and store them in a vector database. 
@@ -311,4 +358,7 @@ Furthermore, we will, raise an exception for the models that do require it. This
 2. It ensures dependencies should be required only where actually used. I also feel better using this method wherever possible.
 The memory parser argument for "action" uses `choices =["list", "delete"]` which let's argparse validate the input for us. 
 The memory parser argument for "id" uses `nargs="?"` as an optional positional argument. This allows the user to omit the ID when listing memories, but requires it when deleting a specific memory. The code then checks if the ID is provided when the action is "delete" and provides an error message if it's missing.
+After adding draft_document to builtin.py, it needs to be registered in cmd_agent.
+`cmd_trace` is a new command that will provide us with observability into what the agent is actually performing.
+The trace files are named by ISO date, so string-sorting them is chronological sorting. This is why [-1] (the last) is the neweest day.
 """

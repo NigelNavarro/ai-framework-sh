@@ -19,6 +19,7 @@ from pathlib import Path
 from framework.knowledge.retrieve import Retriever
 from framework.tools.registry import Tool
 from framework.memory.store import MemoryStore
+from framework.config import Config
 
 def make_search_knowledge_tool(retriever: Retriever) -> Tool:
     """
@@ -145,6 +146,59 @@ def make_recall_tool(store: MemoryStore) -> Tool:
         handler=recall
     )
 
+def make_draft_document_tool(config : Config) -> Tool:
+    """
+    Builds the `draft_document` tool. Writes a draft to a data/drafts and nothing else.
+
+    This is built with safety boundary L2. The model can create an artifact, but it cannot send it.
+    Human intervention outside of this command will decide to review and/or manipulate the file and its contents separately.
+    This is a purposeful feature, and the tool is deliberately confined to a single folder for safety.
+    """
+
+    def draft_document(filename: str, content: str) -> str:
+        """
+        Handler: Save content as a file in data/drafts/ 
+        Return the path.
+        """
+        drafts_dir = config.data_dir / "drafts"
+        drafts_dir.mkdir(parents=True, exist_ok=True)  # Creates data/ and data/drafts if they do not exist.
+
+        # Security: Models will provide just the filename. We will not allow any path traversal or absolute paths.
+        # Strip any directory parts so it can never escape. "../../x" -> "x", "/tmp/x" -> "x".
+        safe_name = Path(filename).name             # Extract just the filename, removing any directory components
+        if not safe_name:
+            return "Error: could not create a draft. Filename was empty or invalid."
+
+        path = drafts_dir / safe_name
+        path.write_text(content, encoding="utf-8")  # Write the content to the file
+        return f"Draft saved to: {path}"            # Return the path to the model
+
+    parameters = {
+        "type": "object",
+        "properties": {
+            "filename": {
+                "type": "string",
+                "description": "A short filename for the draft, e.g. 'email_to_team.md'.",
+            },
+            "content": {
+                "type": "string",
+                "description": "The full text of the draft to write.",
+            },
+        },
+        "required": ["filename","content"]
+    }
+
+    return Tool(
+        name="draft_document",
+        description=(
+            "Write a draft document (email, note, letter, etc.) to a local drafts folder "
+            "for the user to review. Use when the user asks you to draft or write something. "
+            "This only saves a file. It never sends or shares anything."
+        ),
+        parameters=parameters,
+        handler=draft_document,
+    )
+
 
 
 """
@@ -158,5 +212,7 @@ so it is equivalent to calling `search_knowledge(query="Frankenstein")`. Thus, t
 NEW 08/15/26
 The `remember`'s handler returns a confirmation. 
 `store.add` returns the id, but the model doesn't need a UUID, but that the saved worked. This is why we say "Saved to memory:..."
- A tool's return value goes back into the model's context as an observation. A clear confirmation lets the model tell the user that the model acknowledged and will remember it. 
+A tool's return value goes back into the model's context as an observation. A clear confirmation lets the model tell the user that the model acknowledged and will remember it.
+`draft_document` is my first two-argument tool, taking in filename and content. We name the action (to draft a document), provide a description of the action, 
+a description of the inputs (what the model reads to know what to send), and the handler (the function that will be called with those inputs and actually runs/produces the result).
 """
