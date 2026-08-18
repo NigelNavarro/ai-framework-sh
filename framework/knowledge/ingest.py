@@ -61,9 +61,3 @@ def ingest_folder(folder: Path, chunk_size: int, chunk_overlap: int) -> list[Chu
         chunks.extend(ingest_file(path, chunk_size, chunk_overlap)) # For each supported file, we call `ingest_file` to get its chunks and extend our main list of chunks with the results. We use `extend` instead of `append` to flatten the list of chunks from each file into a single list.
     return chunks
 
-"""
-Notes
-The data ingest is now split into two options, split like stages: ingest_file and ingest_folder. The first reads a single file and returns its chunks, while the second walks a folder and returns all chunks from all supported files. This separation allows for more flexible usage, such as testing with a single file or processing an entire dataset.
-In `Chunk(text=piece, source=str(path), chunk_idx=index)`, "text=piece" refers to setting the Chunk's "text" attribute to the current "piece" of text being processed. In this case, "text" is the destination (as defined by our Chunk `@dataclass`), and "piece" is the source (the current chunk of text returned by `chunk_text`). This is a common pattern in Python where we use keyword arguments to clarify which attribute we are setting, especially when the variable names differ between the source and destination.
-Then, with `chunks.extend(ingest_file(path, chunk_size, chunk_overlap))`, we are calling the `ingest_file` function for each supported file found in the folder. This function returns a list of `Chunk` objects for that file. The `extend` method is used to add all of these chunks to our main `chunks` list, effectively flattening the results from multiple files into a single list of chunks. This is important because it allows us to handle all chunks uniformly, regardless of which file they came from.
-"""

@@ -85,21 +85,3 @@ class ChromaVectorStore(VectorStore):
             for text, meta in zip(documents, metadatas)
         ]
 
-"""
-Notes
-__init___ setup and guardrail
-- chromadb.PersistentClient(path=...) - This is the embedded, on-disk Chroma client. It writes to the database at data/chroma (relative to the project root) and survives restarts. No server required. Vectors under data/ won't get committed.
-- get_or_create_collection(name, metadata={...}) - A collection is Chroma's equivalent of a table. 
-- built_with guardrail - This is a safety check that reads back the collection's stored embed_model and compares it to the current config. Should they differ, it raises a clear error telling you to re-index. This was built for a possible future feature that allows model switching, and the switch gets caught here instead of silently returning garbage results.
-
-add - store chunks + vectors
-- Chroma's add() method takes four parallel lists of all the same length and order: ids, embeddings, documents, and metadatas. Index i across all four describes one chunk.
-- ids must be unique strings, so we use `"{source}:{chunk_idx}"` (e.g. frankenstein.txt:10) which is unique per chunk.
-- embeddings=embeddings - We pass our own vectors (made by nomic-embed-text via embed()) to Chroma. This tells Chroma to not compute the embeddings itself and instead use our own pre-computed vectors. This is important because this is how we keep control of which model encodes the meaning, keeping our two-model design intact.
-- metadatas carries the source and chunk_idx for each chunk.
-
-query - retrieve the nearest chunks given a query vector
-- query_embeddings=[query_embedding] - Chroma's query() supports batch queries (answering many queries at once), but we only need to send one query vector, so we wrap it in a list to make it a batch of one.
-- results["documents"][0] - Given that Chroma supports batch queries, it nests our results one level per query (a list per query). Since we only sent one query, we take the first (and only) element of the results lists to get our actual results.
-- Rebuilding chunks - We reconstruct Chunk objects from the returned documents (text) and metadatas (source and chunk_idx) so that query returns the same type (chunk) that add() took in. This way the VectorStore interface is consistent, and the caller doesn't have to know about Chroma's internal structure.
-"""

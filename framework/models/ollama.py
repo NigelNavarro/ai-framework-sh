@@ -79,12 +79,3 @@ class OllamaModelClient(ModelClient):
                     yield content # hand this piece to the caller.
         
 
-"""
-Notes
-A single embedding is a list[float]. When you "embed" a piece of text, The model converts its meaning into a long list of numbers (aka, a vector).
-For example, the sentence "the cat sat" might become:
-`[0.0123, -0.4567, 0.8901, ... ]   # often 768 or 1024 numbers long`
-That list of floats is a vector: a point in high-dimensional space that represents the text's meaning. Texts with similar meaning will have vectors that are "close together" in that space, which is how we can search for relevant documents later on using RAG.
-You could get message with content = chunk["message"]["content"]. However, with square-bracket acceess, if there is a key missing, you can get a KeyError raised, followed by a crash. Instead, we use `.get(key, default)`, which means, "Give me the value for 'key', but if 'key' doesn't exist, just give me the 'default' instead of crashing."
-`chunk.get("messsage", {})` returns the message dict if it exists, or an empty dict {} if "message" is missing. The {} default means the next .get("content", "") is called on an empty dict, which safely returns "" instead of crashing. This way, if the response structure is not exactly what we expect, we won't get a crash; we'll just get empty strings for the content, which we can choose to ignore or handle gracefully.
-"""

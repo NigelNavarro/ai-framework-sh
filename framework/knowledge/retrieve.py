@@ -38,14 +38,3 @@ class Retriever:
         #We wrap the question in a list because embed() expects a list of texts, and we take the first (and only) result.
         return self.store.query(query_embedding, k) # vector -> nearest chunks.
     
-"""
-Notes
-- Retriever initialization: The Retriever is handed a model and a store when it is created. 
-Crucially, the type hints are the interfaces (ModelClient & VectorStore) because we want to be able to swap in any model or store that implements those interfaces. 
-This makes the Retriever flexible and backend-agnostic.
-Using something like `retriever = Retriever(OllamaModelClient(cfg), ChromaVectorStore(cfg), cfg.top_k)`, the caller can compose any model and store that implement the required interfaces.
-But, the retriever itself does not know or care about the specific model or store. It just calls embed() and query() on the interfaces.
-- "Either an INT or nothing." - The `top_k: int | None = None — the int | None` is a Union type. It hints that top_k can either be an integer representing how many chunks to return or None, which means use the default (in other words, we chose not to specify).
-- `query_embedding = self.model.embed([question])[0]` Embeds the question (where [question] wraps it in a list, and [0] takes the single vector back), then hands that vector to the store `store.query`.
-This is the same behavior that we tested in smoke_test_vectorstore.py, but now it is wrapped in a convenient Retriever class that hides the embedding and querying details from the caller.
-"""

@@ -43,10 +43,3 @@ class VectorStore(ABC):
     #     Ordered nearest-first.
     #     """
 
-"""
-Notes
-We use a combination of class VectorStore(ABC) + @abstractmethod to define an interface/contract that any concrete vector store implementation must follow. We cannot instantiate VectorStore directly. Only a concrete subclass such as ChromaVectorStore that implements both add() and query() can be instantiated.
-add(chunks, embeddings) stores pieces of documents alongside their embedding. We see this through embeddings[i] being the vector for chunks[i].
-query(query_embedding, top_k) retrieves the top_k chunks whose embeddings are closest to the query_embedding. It reads as, "Given this question's vector, give me the top_k nearest chunks." then returns Chunk objects, nearest-first.
-Symmetry: Chunk goes in (via add), and Chunk comes back out (via query). The ingest's Chunk dataclass is the common currency flowing through the whole pipeline (chunked → stored → retrieved), carrying its source metadata the entire way, which is exactly what makes citations possible at the end.
-"""

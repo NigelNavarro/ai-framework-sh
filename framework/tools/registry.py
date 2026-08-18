@@ -71,16 +71,3 @@ class ToolRegistry:
         return tool.handler(**arguments)  # Calls the tool's handler with the provided arguments and returns the result.
     
 
-"""
-Notes
-`Callable[..., str]` - This is a type hint for a function, as functions in Python are values which we can store in a variable or a dataclass field. This means `handler` holds the actual function, where it reads as "some function (any args, ...) that returns a string `str`." registry.py is the first time we are treating a function as a value, and what makes a registry possible.
-JSON Schema in parameters - The `parameters` field in the `Tool` dataclass is a dictionary that describes the expected input parameters for the tool in JSON Schema format. This allows for validation and documentation of the tool's inputs, ensuring that the model knows what arguments to provide when calling the tool. As an exmaple, the `search_knowledge` data would be defined as follows:
-  ```
-    {"type": "object",
-     "properties": {"query": {"type": "string", "description": "What to search for"}},
-     "required": ["query"]}
-  ```
-`schemas()` is omitting the handler on purpose, since our model never sees or runs our Python code, so we do not want to expose it. The model only needs to know the name, description, and parameters of the tool to decide when and how to call it.
-execute(...) with handler(**arguments) - `**` in this case is the unpacking operator, which takes a dictionary and expands it into keyword arguments for the function call. This allows us to pass the model's arguments directly to the tool's handler function, matching the expected parameter names defined in the tool's schema.
-`_tools` - The underscore prefix in `_tools` indicates that this attribute is intended for internal use within the `ToolRegistry` class. It is a convention in Python to signal that this attribute should not be accessed directly from outside the class, promoting encapsulation and preventing unintended modifications.
-"""

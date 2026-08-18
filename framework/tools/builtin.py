@@ -201,18 +201,3 @@ def make_draft_document_tool(config : Config) -> Tool:
 
 
 
-"""
-Notes
-This is a builder file. The `make_search_knowledge_tool` function takes in a Retriever and returns a Tool object that wraps it. 
-The model sees only the schema (name, description, parameters) and calls the handler when it wants to use this tool. The Retriever is baked into the handler via closure, so the model never has to know about it.
-The handler needs a Retriever to do its job, but the model only supplies a `query` string. Passing the Retriever into the outer function lets the inner handler use it without it being a model facing argument. 
-When the model calls the tool, it sends its arguments as a dict keyed by the names it read in our schema. 
-Since our schema declares a single `query` string, the model will send a dict like `{"query": "Frankenstein"}`. Then, the `**` unpacks that dict into keyword arguments for the handler, 
-so it is equivalent to calling `search_knowledge(query="Frankenstein")`. Thus, the schema name must match the handler's parameter name in order for this handoff to function correctly. 
-NEW 08/15/26
-The `remember`'s handler returns a confirmation. 
-`store.add` returns the id, but the model doesn't need a UUID, but that the saved worked. This is why we say "Saved to memory:..."
-A tool's return value goes back into the model's context as an observation. A clear confirmation lets the model tell the user that the model acknowledged and will remember it.
-`draft_document` is my first two-argument tool, taking in filename and content. We name the action (to draft a document), provide a description of the action, 
-a description of the inputs (what the model reads to know what to send), and the handler (the function that will be called with those inputs and actually runs/produces the result).
-"""

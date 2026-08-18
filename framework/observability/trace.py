@@ -36,13 +36,3 @@ class Tracer:
 
         with open(trace_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry) + "\n") # Append the JSON line to the file
-
-"""
-Notes
-class Tracer with __init__ follows the same pattern as our OllamaModelClient, built once from config, then reused. 
-Its __init__ figures out the traces folder (data_dir/traces) and creates it if needed (mkdir(parents=True, exist_ok=True).
-The record(self, event) is the single method in this Tracer. It handles whatever dict it wants logged (e.g. {"model": ..., "latency_s":...}), then record stamping and writing it. By keeping it generic today, it can log model calls today and retrievals/tool calls in the future without needing changes. The only requirement is that the event is a dict that can be serialized to JSON.
-The dict unpacking is hanled by `{timestamp:..., **event}` which "spills" all of the event's key-values (KV) into the new dict alongside the timestamp. It is a clean way to merge in a standard field (the timestamp) without the caller having to remember it.
-datetime.now(timezone.utc).isoformat() records the current time in UTC as an ISO-formatted string. Makes timestamps unabiguious by standardizing format.
-json.dumps(entry) turns the dict into a JSON string, then adds the newline that makes it a proper JSON line.
-"""
