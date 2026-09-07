@@ -1,6 +1,6 @@
 # ai-framework-sh
 
-A self-hosted AI assistant **framework** — a reusable Python substrate for building local, private AI assistants on top of [Ollama](https://ollama.com).
+A self-hosted AI assistant **framework**, a reusable Python substrate for building local, private AI assistants on top of [Ollama](https://ollama.com).
 
 This is a personal project: a learning-driven, from-scratch build of the core pillars an AI assistant needs: a model runtime, retrieval-augmented generation (RAG) over your own
 documents, and an agent loop with tools, durable memory, and observability. A command-line app is its first consumer.
@@ -11,22 +11,22 @@ documents, and an agent loop with tools, durable memory, and observability. A co
 
 ## What it can do
 
-- **Cited Q&A over your documents** — ingest a folder of notes, ask questions, and get answers grounded strictly in those sources with `[n]` citations (and a plain "not in the sources" when the answer isn't there, instead of a hallucination).
-- **An agent that decides** — in `agent` mode the model chooses when to search your documents, save or recall a memory, or draft a document, through a bounded tool-calling loop.
-- **Durable, inspectable memory** — tell it a preference or fact once and it persists across sessions, stored in a human-readable file you can list, review, and delete.
-- **Safe drafting** — it writes drafts (emails, notes) to a local folder for you to review. It never sends or shares anything.
-- **Observability by default** — every model call is appended to a per-day JSONL trace, so any answer can be reconstructed after the fact.
+- **Cited Q&A over your documents:** ingest a folder of notes, ask questions, and get answers grounded strictly in those sources with `[n]` citations (and a plain "not in the sources" when the answer isn't there, instead of a hallucination).
+- **An agent that decides:** in `agent` mode the model chooses when to search your documents, save or recall a memory, or draft a document, through a bounded tool-calling loop.
+- **Durable, inspectable memory:** tell it a preference or fact once and it persists across sessions, stored in a human-readable file you can list, review, and delete.
+- **Safe drafting:** it writes drafts (emails, notes) to a local folder for you to review. It never sends or shares anything.
+- **Observability by default:** every model call is appended to a per-day JSONL trace, so any answer can be reconstructed after the fact.
 
 ## This is a framework, not an application
 
-When I set out to do this project, I wanted to learn how to leverage the power of AI beyond that of a simple chat interface to a specific subscription-service LLM. From the beginning, I was most interested in creating a harness that can leverage the power of multiple LLMs and achieve creating a system that can handle multiple tasks at once. 
+When I set out to do this project, I wanted to learn how to leverage the power of AI beyond that of a simple chat interface to a specific subscription-service LLM. From the beginning, I was most interested in creating a harness that can leverage the power of multiple LLMs and achieve creating a system that can handle multiple tasks at once.
 
 The build in this current state is just the first step in that learning (though even this took a little while longer to put together than I initially expected it would take). Its current core functions are:
 
 - The **framework** (`framework/`) is app-agnostic, with reusable machinery: model abstraction, RAG, agent loop, tools, memory, observability.
-- An **application** (`apps/`) is one _consumer_ of the framework — a CLI today, but perhaps a web or voice front-end later.
+- An **application** (`apps/`) is one _consumer_ of the framework, a CLI today, but perhaps a web or voice front-end later.
 
-The dependency only points one way: *the app depends on the framework, never the reverse.* That's what makes the same core reusable across different interfaces. For more information, see [`docs/DESIGN.md`](docs/DESIGN.md) to see the full architecture.
+The dependency only points one way: _the app depends on the framework, never the reverse._ That's what makes the same core reusable across different interfaces. For more information, see [`docs/DESIGN.md`](docs/DESIGN.md) to see the full architecture.
 
 ## Requirements
 
@@ -39,7 +39,7 @@ ollama pull gemma4            # reasoning / chat
 ollama pull nomic-embed-text  # embeddings for RAG and memory
 ```
 
-  Two models by design: one runtime (Ollama) serves both reasoning and embeddings.
+Two models by design: one runtime (Ollama) serves both reasoning and embeddings.
 
 ## Setup
 
@@ -58,7 +58,7 @@ pip install -e ".[dev]"
 
 ## Configuration
 
-Settings live in `framework/config.py` as typed defaults — the framework runs with **zero configurations** out of the box (model names, paths, chunk size, `top_k`, the agent's `max_tool_rounds`). To override anything, copy the example and edit it:
+Settings live in `framework/config.py` as typed defaults, the framework runs with **zero configurations** out of the box (model names, paths, chunk size, `top_k`, the agent's `max_tool_rounds`). To override anything, copy the example and edit it:
 
 ```bash
 cp config.example.toml config.toml
@@ -77,7 +77,7 @@ All commands are subcommands of the CLI. Make sure that Ollama is running first.
 # Ask a grounded, cited question (always retrieves from the knowledge base)
 .venv/bin/python apps/cli/main.py ask "What does the onboarding doc say about VPN setup?"
 
-# Agent mode — the model decides which tools to use (search / remember / recall / draft)
+# Agent mode: the model decides which tools to use (search / remember / recall / draft)
 .venv/bin/python apps/cli/main.py agent "Remember that I prefer concise answers."
 .venv/bin/python apps/cli/main.py agent "Draft a short thank-you email to my team and save it as thanks.md"
 
@@ -146,21 +146,21 @@ Each pillar has its own README with detailed design notes. Full map: [`docs/DESI
 
 ## Safety & autonomy
 
-Every capability sits at **Autonomy Levels 0–2** (chat, read-only, local drafting), and nothing acts on the outside world. The one writing tool (`draft_document`) is confined to `data/drafts/`. Higher autonomy (sending, scheduling, external access) is deliberately out of scope for this MVP, and would sit behind approval gates and an audit log. The full governance model (the ten questions of what to log, what to never access, what would need approval) is in [`docs/DECISIONS.md`](docs/DECISIONS.md).
+Every capability sits at **Autonomy Levels 0 to 2** (chat, read-only, local drafting), and nothing acts on the outside world. The one writing tool (`draft_document`) is confined to `data/drafts/`. Higher autonomy (sending, scheduling, external access) is deliberately out of scope for this MVP, and would sit behind approval gates and an audit log. The full governance model (the ten questions of what to log, what to never access, what would need approval) is in [`docs/DECISIONS.md`](docs/DECISIONS.md).
 
 ## Beyond the MVP
 
 Deferred by design, in rough priority order:
 
-1. **Web / voice front-ends** — a second app on the same framework, unchanged.
-2. **Supervised actions (Level 3)** — a write-capable tool behind an approval gate and
+1. **Web / voice front-ends:** a second app on the same framework, unchanged.
+2. **Supervised actions (Level 3):** a write-capable tool behind an approval gate and
    audit log.
-3. **Richer, per-tool-call tracing** — replay the agent loop step by step.
-4. **RAG quality** — reranking, PDF ingestion, a golden-Q&A regression set.
-5. **Memory** — in-place `memory edit`, categories, optional expiry.
+3. **Richer, per-tool-call tracing:** replay the agent loop step by step.
+4. **RAG quality:** reranking, PDF ingestion, a golden-Q&A regression set.
+5. **Memory:** in-place `memory edit`, categories, optional expiry.
 
 ## Documentation
 
-- [`docs/DESIGN.md`](docs/DESIGN.md) — architecture and the app/framework boundary
-- [`docs/DECISIONS.md`](docs/DECISIONS.md) — the ten governance questions, answered
-- Per-pillar READMEs under `framework/*/` — detailed design notes for each module
+- [`docs/DESIGN.md`](docs/DESIGN.md): architecture and the app/framework boundary
+- [`docs/DECISIONS.md`](docs/DECISIONS.md): the ten governance questions, answered
+- Per-pillar READMEs under `framework/*/`: detailed design notes for each module

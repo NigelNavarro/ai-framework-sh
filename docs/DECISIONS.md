@@ -51,15 +51,15 @@ If we operate on this general behavioral pattern of autonomy:
 
 I would say that intentionally the core of this AI framework is currently designed for Levels 0 to 2. That means for the future MVP state, I would be traversing into Level 3 or higher, where actions taken on behalf of the user must be taken only after explicit approval, supervised and critically analyzed. Keeping the initial and core functionality within level two and lower is a deliberate safety choice for a learning project such as this. Safety in this case is inherited by the limited capability, which only engages personal documentation, and drafts that have to be manually reviewed and sent.
 
-We can see in the graph below that every capability in the current system falls into the lowest three rungs of the autonomy ladder (Levels 0–2).
+We can see in the graph below that every capability in the current system falls into the lowest three rungs of the autonomy ladder (Levels 0 to 2).
 
-| Use case / command                          | Autonomy level                    | Why it sits there                                                                                                                                                                                      |
-| ------------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `chat` (plain conversational REPL)          | Level 0 — Chat only               | Answers from the model alone; no tools, no retrieval, no side effects.                                                                                                                                 |
-| `ask` (grounded, cited Q&A)                 | Level 1 — Read-only               | Retrieves from the local knowledge base and answers from those sources; only reads data.                                                                                                               |
-| `agent` (model decides which tools to call) | Level 1 — Read-only               | The agent may choose to search knowledge or recall memory, but every tool it can reach is read-only or writes only inside `data/`. Deciding to use a read-only tool does not raise the autonomy level. |
-| `remember` / `recall` + `memory` CLI        | Level 1 — Read-only (local state) | Reads and writes the assistant's own memory store; it never acts on the outside world.                                                                                                                 |
-| `draft_document`                            | Level 2 — Drafting                | Produces an artifact (an email, note, etc.) as a local file for me to review. It never sends or shares anything.                                                                                       |
+| Use case / command                          | Autonomy level                   | Why it sits there                                                                                                                                                                                      |
+| ------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `chat` (plain conversational REPL)          | Level 0: Chat only               | Answers from the model alone; no tools, no retrieval, no side effects.                                                                                                                                 |
+| `ask` (grounded, cited Q&A)                 | Level 1: Read-only               | Retrieves from the local knowledge base and answers from those sources; only reads data.                                                                                                               |
+| `agent` (model decides which tools to call) | Level 1: Read-only               | The agent may choose to search knowledge or recall memory, but every tool it can reach is read-only or writes only inside `data/`. Deciding to use a read-only tool does not raise the autonomy level. |
+| `remember` / `recall` + `memory` CLI        | Level 1: Read-only (local state) | Reads and writes the assistant's own memory store; it never acts on the outside world.                                                                                                                 |
+| `draft_document`                            | Level 2: Drafting                | Produces an artifact (an email, note, etc.) as a local file for me to review. It never sends or shares anything.                                                                                       |
 
 ---
 
@@ -69,12 +69,12 @@ In this current rendition of the AI framework, it is designed so that every cate
 
 The current design holds data that is open to the user to view. While it gives the user the ability to govern and control our data easily, additional considerations and protections would have to be made before I ever considered exposing the framework to network capabilities. At the very least, this data would have to be protected.
 
-| Data                                      | Where it lives                                      | Why it's sensitive                                                                                                      |
-| ----------------------------------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Ingested documents (personal notes/files) | `knowledge_base/`, embedded into `data/chroma/`     | The raw personal material the whole assistant reasons over.                                                             |
-| Memories (preferences, personal facts)    | `data/memory.json` + the `memory` Chroma collection | Durable personal details I've explicitly asked it to retain.                                                            |
-| Drafts (emails, notes)                    | `data/drafts/`                                      | Content intended for people/contexts, some of it private.                                                               |
-| Traces (the audit log)                    | `data/traces/*.jsonl`                               | Records what I asked and when — sensitive even though it's "just logs," because the questions themselves reveal intent. |
+| Data                                      | Where it lives                                      | Why it's sensitive                                                                                                     |
+| ----------------------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Ingested documents (personal notes/files) | `knowledge_base/`, embedded into `data/chroma/`     | The raw personal material the whole assistant reasons over.                                                            |
+| Memories (preferences, personal facts)    | `data/memory.json` + the `memory` Chroma collection | Durable personal details I've explicitly asked it to retain.                                                           |
+| Drafts (emails, notes)                    | `data/drafts/`                                      | Content intended for people/contexts, some of it private.                                                              |
+| Traces (the audit log)                    | `data/traces/*.jsonl`                               | Records what I asked and when, sensitive even though it's "just logs," because the questions themselves reveal intent. |
 
 ### Mechanism
 
@@ -93,15 +93,15 @@ At present, the answer to this is similar to question 3. In future renditions of
 
 Today, the assistant doesn't access any external systems. Its world presently is the local model runtime and any files found in the data directory.
 
-| System / resource                                  | Status                                                                                                       |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| The network / internet                             | Never - no outbound requests except to the local Ollama server (`localhost`).                                |
-| Email (send or read)                               | Never — it can draft an email to a file, but has no mail access.                                             |
-| Calendar / scheduling                              | Never — no calendar integration exists.                                                                      |
-| The filesystem outside `data/`                     | Never — the only writing tool (`draft_document`) is confined to `data/drafts/`; nothing else writes to disk. |
-| Shell / arbitrary command execution                | Never — there is no tool that runs OS commands or executes code.                                             |
-| Credentials, secrets, financial or payment systems | Never — the assistant holds and touches none of these.                                                       |
-| Other users' / household members' data             | N/A — single-user by design.                                                                                 |
+| System / resource                                  | Status                                                                                                      |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| The network / internet                             | Never - no outbound requests except to the local Ollama server (`localhost`).                               |
+| Email (send or read)                               | Never: it can draft an email to a file, but has no mail access.                                             |
+| Calendar / scheduling                              | Never: no calendar integration exists.                                                                      |
+| The filesystem outside `data/`                     | Never: the only writing tool (`draft_document`) is confined to `data/drafts/`; nothing else writes to disk. |
+| Shell / arbitrary command execution                | Never: there is no tool that runs OS commands or executes code.                                             |
+| Credentials, secrets, financial or payment systems | Never: the assistant holds and touches none of these.                                                       |
+| Other users' / household members' data             | N/A: single-user by design.                                                                                 |
 
 ### Mechanism
 
