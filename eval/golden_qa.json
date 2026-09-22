@@ -1,0 +1,22 @@
+[
+    {
+        "question": "Who created the creature Frankenstein?",
+        "expected_source": "frankenstein.txt"
+    },
+    {
+        "question": "What does Victor Frankenstein pursue across the ice at the end?",
+        "expected_source": "frankenstein.txt"
+    },
+    {
+        "question": "What whale is Captain Ahab obsessed with hunting?",
+        "expected_source": "mobydick.txt"
+    },
+    {
+        "question": "Who is the narrator of Moby Dick?",
+        "expected_source": "mobydick.txt"
+    },
+    {
+        "question": "Why does Elizabeth first reject Mr. Darcy's proposal?",
+        "expected_source": "prideandprejudice.txt"
+    }
+]
