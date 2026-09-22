@@ -35,6 +35,22 @@ This file grew the most over the project, from a single REPL into a six-verb CLI
 - **2026-07-27:** added `agent`, the agentic loop that wraps retrieval as a tool the model may call (or not, or repeatedly), alongside the original always-retrieve `ask`.
 - **2026-08-15:** registered the `remember` / `recall` and `draft_document` tools on `agent`; added the `memory list | delete` controls and the `trace tail` viewer.
 
+## v0.3 - Harden the Core
+
+This update deepens what the CLI can see and replay.
+
+- **The agent now traces itself.** `cmd_agent` passes its `Tracer` into `run_agent` so the loop records structured events (`agent_start`, one `tool_call` per tool, and a terminal `agent_end` or `cap_reached`), all sharing a `run_id`. The older post-hoc summary was removed in favor of this richer event capture option.
+- **`trace show <run_id>` replays one run.** Alongside `trace tail`, this new action gathers every event carrying a given `run_id` across all trace files, sorts them by time, and prints them in order, reconstructing a single run step by step.
+- **`print_event` is shared.** The per-event formatting was extracted from the tail loop into a `print_event(event)` helper, so `tail` and `show` display events identically instead of keeping two copies of the code.
+
+### Python concepts to highlight in this milestone
+
+- **`event.get(key, default)` is a dict method.** For example, `event.get("type", "event")` looks up the key `"type"` and returns its value if it exists. If the value does not exist, then instead it returns the default `"event"` (or, with no default passed in, a missing key here will return `None`).
+  - This differs from the square bracket lookup: `event["type"]`. If the key value doesn't exist when using `event["type"]`, Python raises a `KeyError` indicating that the key is missing.
+  - Both `event["type"]` and `.get("type", "event")` are runtime dictionary lookups, but the `.get("type", "event")` has a fallback default `"event"` which allows the code to keep going instead of raising a `KeyError`.
+- **`trace_files = sorted(traces_dir.glob("*.jsonl"))`.** `.glob("*.jsonl")` finds every file ending in `.jsonl` and treats them as a generator of `Path`s in no guaranteed order. Then, `sorted(...)` consumes that generator and returns a new, ordered list. No sort key is needed because `Path`s are naturally orderable (chronologically since the files are also ISO-date named).
+- **In `events.sort(key=lambda e: e.get("timestamp", ""))`,** `.sort()` reorders the list in place (it mutates `events` and returns `None`, unlike `sorted()`, which returns a new list). A `key` is required because dicts are not directly comparable, so the `lambda` maps each event to a scalar to sort by: its timestamp string (or `""` if missing, which keeps every key comparable). ISO timestamps sort chronologically as strings, so the run replays in the order it happened.
+
 ## Related
 
 - **Consumes the framework:** [`models`](../../framework/models/README.md), [`knowledge`](../../framework/knowledge/README.md), [`agent`](../../framework/agent/README.md), [`tools`](../../framework/tools/README.md), [`memory`](../../framework/memory/README.md), [`observability`](../../framework/observability/README.md).

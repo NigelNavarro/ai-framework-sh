@@ -29,3 +29,34 @@ The agent pillar decides how the model is prompted and, in the agentic path, let
 
 - **Uses:** [`tools`](../tools/README.md) (the registry it drives), [`knowledge`](../knowledge/README.md) (chunks feed `context.py`), and [`models`](../models/README.md) (chat).
 - **Governance:** [DECISIONS.md §2](../../docs/DECISIONS.md#2-which-use-cases-are-read-only-drafting-only-supervised-action-or-autonomous) and [§9](../../docs/DECISIONS.md#9-how-will-model-outputs-be-evaluated-for-correctness-and-safety).
+
+## Observability (introduced in v0.3)
+
+`run_agent` takes an optional `Tracer`. When one is provided, the loop records structured events which are each stamped with a shared `run_id` so that an entire run can be filtered out of the trace log and replayed in order.
+
+- **`agent_start`** — Once per run (the question, the model, and the tools available).
+- **`tool_call`** — Runs once per tool the model calls (tool name, arguments, an observation preview, the tool's latency, and an `error` field that is `null` on success or has an error message when the tool is raised).
+- **`agent_end`** — Runs once when the model answers (rounds used and total latency).
+- **`cap_reached`** - Runs once when a run exhausts `max_rounds` without answering (rounds used and total latency).
+
+Tracing is _optional_: with no tracer, the loop behaves identically and records nothing.
+
+### Verification
+
+The first live check confirmed the wiring end to end even though the run aborted early because the local model server was offline. The `agent_start` event was written to the trace before the run stopped:
+
+```shell
+    type: agent_start
+    run_id: 8fe1c54a
+    model: gemma4:latest
+    question: Draft a haiku about whales and save it as whales.md
+    tools_available: ['search_knowledge', 'remember', 'recall', 'draft_document']
+```
+
+From this event trace we can confirm the following:
+
+1. The tracer is wired through `run_agent` and the loop is emitting events.
+2. Each event carries a shared `run_id`, the thread that ties a run's events together.
+3. The event carries a `command` or `type` label, which `trace tail` uses to head each entry.
+
+The `tool_call` and `agent_end` events aren't reached not because of the tracing, but because of the original issue regarding the local model being offline.

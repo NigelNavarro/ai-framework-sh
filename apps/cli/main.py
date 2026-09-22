@@ -174,22 +174,9 @@ def cmd_agent(config, question):
     registry.register(make_recall_tool(memory))                 # Register the recall tool so the model can call it to retrieve facts from memory.
     registry.register(make_draft_document_tool(config))         # Register the draft_document tool so the model can use it to create draft documents.
 
-    # `run_agent` asks the model, runs any tool it requests, feeds results back, and returns the plain-text answer.
-    start = time.perf_counter()
-    answer = run_agent(client, registry, question, config.max_tool_rounds) 
-    latency_s = time.perf_counter() - start
-
+    # run_agent records its own trace (agent_start, tool_call, agent_end) through the tracer.
+    answer = run_agent(client, registry, question, config.max_tool_rounds, tracer=tracer) 
     print(f'\n{answer}\n')
-
-    # Trace - Retrieval happens inside the agent loop, so at this level, we can only record which tools were available, not the ones the model actually called.
-    tracer.record({
-        "command": "agent",
-        "model": client.model,
-        "question": question,
-        "tools_available": [schema['function']['name'] for schema in registry.schemas()],
-        "answer_chars": len(answer),
-        "latency_s": round(latency_s, 3),
-    })
 
 def cmd_memory(config, action, memory_id):
     """
@@ -219,12 +206,28 @@ def cmd_memory(config, action, memory_id):
         else:
             print(f"No memory found with id {memory_id}. Run `memory list` to see IDs.")
 
-def cmd_trace(config, count):
+def print_event(event):
     """
-    View the most recent trace events (the 'tail' of the log).
+    Pretty-print one trace event: a header line, then its fields.
+    """
+    timestamp = event.get("timestamp", "?")
 
-    Reads the newest data/traces/<date>.jsonl file and prints its last 'count' events.
-    This is the observability payoff which allows us to see what every chat/ask/agent command actually performed.
+    # Prefer the structured event's type. Fall back to command (older events) or model.
+    label = event.get("type") or event.get("command") or event.get("model") or "event"
+    print(f"{timestamp}  [{label}]")
+    for key, value in event.items():
+        if key in ("timestamp", "command"):
+            continue
+        print(f"    {key}: {value}")
+    print()
+
+def cmd_trace(config, action, run_id, count):
+    """
+    View the most recent trace events.
+
+    `tail` shows the most recent events from the newest log.
+    `show <run-id>` replays a single run. Every event sharing that `run_id` in time order.
+    Reads files only.
     """
     traces_dir = config.data_dir / "traces"
     if not traces_dir.exists():
@@ -237,22 +240,34 @@ def cmd_trace(config, count):
     if not trace_files:
         print("No trace files found.")
         return
-    latest = trace_files[-1]                                # Get the most recent trace file (the last one in the sorted list).
+    
+    if action == "tail":
+        latest = trace_files[-1]                                # Get the most recent trace file (the last one in the sorted list).
+        lines = latest.read_text(encoding="utf-8").splitlines() # Read the file and split it inoto one event per line.
+        recent = lines[-count:]                                 # Get the last 'count' lines (the most recent events).
+        print(f"Showing last {len(recent)} of {len(lines)} events from {latest.name}:\n")
+        for line in recent:
+            print_event(json.loads(line))                            # event turns JSON text into a dict
+    elif action == "show":
+        if not run_id:
+            print("Error: 'trace show' needs a run id. Run 'trace tail' to find one.")
+            return
 
-    lines = latest.read_text(encoding="utf-8").splitlines() # Read the file and split it inoto one event per line.
-    recent = lines[-count:]                                 # Get the last 'count' lines (the most recent events).
+        # Gather every event with this run_id across all trace files.
+        events = []
+        for path in trace_files:
+            for line in path.read_text(encoding="utf-8").splitlines():
+                event = json.loads(line)
+                if event.get("run_id") == run_id:
+                    events.append(event)
+        if not events:
+            print(f"No events found for run id {run_id}.")
+            return
 
-    print(f"Showing last {len(recent)} of {len(lines)} events from {latest.name}:\n")
-    for line in recent:
-        event = json.loads(line)                            # event turns JSON text into a dict
-        timestamp = event.get("timestamp", "?")
-        label = event.get("command", event.get("model", "event"))
-        print(f"{timestamp}  [{label}]")
-        for key, value in event.items():
-            if key in ("timestamp", "command"):
-                continue
-            print(f"    {key}: {value}")
-        print()
+        events.sort(key=lambda e: e.get("timestamp", ""))       # Chronological order
+        print(f"Replay of run {run_id} with ({len(events)} events):\n")
+        for event in events:
+            print_event(event)
 
 def main():
     # Build the top-level parser  and a slot for the subcommands ("verbs")
@@ -284,8 +299,9 @@ def main():
 
     # Register the 'trace' subcommand (observability)
     trace_parser = subparsers.add_parser("trace", help="View recent trace events.")
-    trace_parser.add_argument("action", choices=["tail"], help="tail: show the most recent events")
-    trace_parser.add_argument("-n", "--count", type=int, default=10, help="How many recent events to show (default 10)")
+    trace_parser.add_argument("action", choices=["tail", "show"], help="tail: show the most recent events, show: display events for a specific run id")
+    trace_parser.add_argument("run_id", nargs="?", help="The run ID to replay events for (required for 'show')")
+    trace_parser.add_argument("-n", "--count", type=int, default=10, help="How many recent events to show for tail (default 10)")
 
     args = parser.parse_args() # Parse the command-line arguments; everything above must be registered before this line
     config = load_config()     # Load the configuration (e.g. model settings, API keys, etc.)
@@ -302,7 +318,7 @@ def main():
     elif args.command == "memory":
         cmd_memory(config, args.action, args.id)
     elif args.command == "trace":
-        cmd_trace(config, args.count)
+        cmd_trace(config, args.action, args.run_id, args.count)
 
 if __name__ == "__main__":
     main() # Run the CLI entry point
