@@ -23,14 +23,26 @@ does, or carefully expand autonomy, in that order of priority.
   everything the agent does, before expanding power.
   - Observability depth: per-tool-call tracing with a run-id, and step-by-step replay of
     an agent run (the prerequisite for supervised actions).
-  - RAG evaluation: a golden Q&A set, a retrieval regression check, and grounding/citation
-    checks. Optional: reranking, PDF ingestion.
-  - Stays within Autonomy Levels 0 to 2. No new outward capability.
+  - RAG evaluation: a golden Q&A set, a retrieval regression check, and a route-aware
+    grounding judge that grades answers instead of passing or failing them. Optional:
+    reranking, PDF ingestion.
+  - Knowledge boundary and provenance: retrieval returns relevance scores so the framework
+    can tell when nothing in the corpus applies, and every answer is labeled with the
+    source it came from (documents, memory, or the model's own general knowledge). This
+    prepares for additional sources without adding any.
+  - Stays within Autonomy Levels 0 to 2. No new outward capability, and no network access.
 
 - **v0.4: Supervised Actions (Level 3).** The first action that reaches beyond
   `data/drafts/`, behind an explicit approval gate and audit log: the agent proposes, the
   system surfaces the exact action and arguments, it executes only on approval, and both
   the request and the decision are logged. Enabled by the v0.3 audit trail.
+
+- **v0.4 or later: External knowledge sources (governed).** When a question falls outside
+  the local corpus and memory, let the agent consult an external source such as web search,
+  and cite it. This is read-only but still a governed capability: the query leaves the
+  machine and untrusted text enters the model's context, so it ships with an explicit
+  egress decision, source labeling, and injection safeguards. Enabled by the v0.3 boundary
+  detection and provenance work. Deliberately outside v0.3.
 
 ## Under consideration (v0.5+)
 
