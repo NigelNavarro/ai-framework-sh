@@ -33,3 +33,6 @@ ChatGPT-HowAgenticSystems+MCPWorks.png
 
 # Scratch Tests & Learning Scripts - Kept Local, Not a part of the Framework
 scratch_*.py
+
+# VS Code workspace file - Local editor setup, Not a part of the Framework
+*.code-workspace
