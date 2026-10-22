@@ -24,22 +24,24 @@ class VectorStore(ABC):
         """
     
     @abstractmethod
+    def query_with_scores(self, query_embedding: list[float], top_k: int) -> list[tuple[Chunk, float]]:
+        """
+        Return the `top_k` nearest chunks, each paired with a relevance score (nearest-first).
+        
+        The score is a cosine similarity metric on a fixed scale between '-1.0' to '1.0'. Higher value = higher relevancy.
+          - A score of '1.0' means that the same direction is the same meaning.
+          - Score ranging around '0.0 to 0.5' means that the text is unrelated.
+          - Small negative scores like '-0.05' just means really unrelated.
+          - Scores outside of '-1.0' to '1.0' point to a possible bug. Investigate further.
+        """
+
     def query(self, query_embedding: list[float], top_k: int) -> list[Chunk]:
         """
-        Return the `top_k` stored chunks whose vectors are nearest to the query.
+        Return the `top_k` nearest chunks (nearest-first) without scores.
         
-        Results come back as Chunk objects (text + source metadata), ordered nearest-first, so the caller can cite where each answer came from.
+        The query_with_scores() function performs the search and returns full results with scores.
+        Then, query() returns a trimmed down version of the answer, consisting of a list of the 'top_k' stored Chunk objects 
+        nearest to the question's vector, ordered nearest-first (each with its text, source, and chunk index) and dropping 
+        the score with '_score' since the relevance score is not required in the response.
         """
-
-# --- Future option: Return similarity scores alongside chunks ---
-# Useful later for thresholds ("only use chunks above 0.7") or showing confidence. Each backend would return (chunk, score) pairs, nearest-first.
-# Should we use this, every backend will be required to implement it too. Un-commenting an abstractmethod adds an obligation to all implementations.
-    # @abstractmethod
-    # def query_with_scores(
-    #     self, query_embedding: list[float], top_k: int
-    # ) -> list[tuple[Chunk, float]]:
-    #     """
-    #     Like query(), but each result is paired with its similarity score (higher = more similar).
-    #     Ordered nearest-first.
-    #     """
-
+        return [chunk for chunk, _score in self.query_with_scores(query_embedding, top_k)]
