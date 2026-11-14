@@ -37,7 +37,7 @@ def make_search_knowledge_tool(retriever: Retriever) -> Tool:
         """
         chunks = retriever.retrieve(query) # Use the Retriever to get the most relevant chunks for the query.
         if not chunks:
-            return "No relevant information found in the knowledge base."
+            return "Nothing in the knowledge base is relevant to this question (no chunk met the relevance threshold)."
         
         # Formats the return
         # Example:

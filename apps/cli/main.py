@@ -119,13 +119,13 @@ def cmd_ask(config, question):
     """
     client = OllamaModelClient(config)
     store = ChromaVectorStore(config)
-    retriever = Retriever(client, store, config.top_k)  # Composes the model and vector store into a retriever that can find relevant chunks for a given question.
+    retriever = Retriever(client, store, config.top_k, config.relevance_threshold)  # Composes the model and vector store into a retriever that can find relevant chunks for a given question.
     tracer = Tracer(config)                             # The Tracer wraps the model client to record all interactions for observability.
 
     # RETRIEVE - Embed the question, then pull the nearest stored chunks
     chunks = retriever.retrieve(question)
     if not chunks:
-        print("No relevant information found. Has anything been ingested yet? Try: ingest <path>")
+        print("Nothing in the knowledge base is relevant to this question (no chunk met the relevance threshold). If nothing has been ingested yet, try: ingest <path>")
         return
     
     # ASSEMBLE - Build the system & user messages that ground the model in these chunks and instruct it to cite them by number.
@@ -162,7 +162,7 @@ def cmd_agent(config, question):
     """
     client = OllamaModelClient(config)
     store = ChromaVectorStore(config)
-    retriever = Retriever(client, store, config.top_k)
+    retriever = Retriever(client, store, config.top_k, config.relevance_threshold)
     tracer = Tracer(config)
 
     # Build the tool registry. Retrieval stops being automatic, and becomes a tool the model can choose to call.

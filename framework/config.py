@@ -21,21 +21,23 @@ class Config:
     """All framework settings, with defaults"""
 
     # --- Model runtime ---
-    model: str = "gemma4:latest" # Default reasoning model, named by `ollama list`
-    embed_model: str = "nomic-embed-text" # Embeddings for RAG
+    model: str = "gemma4:latest"                # Default reasoning model, named by `ollama list`
+    embed_model: str = "nomic-embed-text"       # Embeddings for RAG
     ollama_host: str = "http://localhost:11434" # Ollama server URL (Local listening)
 
     # --- Knowledge/RAG ---
-    chunk_size: int = 1000 # characters per chunk when splitting documents for RAG
-    chunk_overlap: int = 200 # characters shared betweeen chunks to preserve context
-    top_k: int = 5 # how many relevant chunks to retrieve for RAG per question
+    chunk_size: int = 1000                      # characters per chunk when splitting documents for RAG
+    chunk_overlap: int = 200                    # characters shared betweeen chunks to preserve context
+    top_k: int = 5                              # how many relevant chunks to retrieve for RAG per question
+    relevance_threshold: float = 0.0            # cosine similarity floor. Chunks scoring below it count as "not relevant". MODEL SPECIFIC. Re-calibrate when embed_model changes.
+
 
     # -- Agent loop ---
-    max_tool_rounds: int = 5 # hard cap on tool-call rounds (preventing runaway loops)
+    max_tool_rounds: int = 5                    # hard cap on tool-call rounds (preventing runaway loops)
 
     # -- Storage paths ---
-    data_dir: Path = ROOT / "data" # where to store all data (knowledge, memory, etc.). ChromaDB, traces, memory, drafts, etc.
-    knowledge_base_dir: Path = ROOT / "knowledge_base" # where to store source documents for RAG (PDFs, text files, etc.)
+    data_dir: Path = ROOT / "data"                      # where to store all data (knowledge, memory, etc.). ChromaDB, traces, memory, drafts, etc.
+    knowledge_base_dir: Path = ROOT / "knowledge_base"  # where to store source documents for RAG (PDFs, text files, etc.)
 
     def ensure_dirs(self):
         """
@@ -54,20 +56,20 @@ def load_config(path: str | Path | None = None) -> Config:
     
     Returns are a ready-to-use Config. It never raises if the file is missing. Defaults are always a valid configuraiton.
     """
-    cfg = Config() # Assign defaults from the dataclass
+    cfg = Config()                                          # Assign defaults from the dataclass
 
     toml_path = Path(path) if path else ROOT / "config.toml"
     if not toml_path.exists():
-        return cfg # No file, just return defaults
+        return cfg                                          # No file, just return defaults
     
     with open(toml_path, "rb") as f:
-        data = tomllib.load(f) # Load the TOML file into a dict; requires binary mode
+        data = tomllib.load(f)                              # Load the TOML file into a dict; requires binary mode
 
-    valid_keys = {field.name for field in fields(Config)} # Get valid config keys from the dataclass fields
+    valid_keys = {field.name for field in fields(Config)}   # Get valid config keys from the dataclass fields
     for key, value in data.items():
         if key not in valid_keys:
-            continue # Silently skip settings we do not recognize. If the field is a Path, convert the string from TOML into a Path.
-        if isinstance(getattr(cfg, key), Path): # If the default value for this key is a Path, we expect the user to provide a string path in the TOML, which we convert to a Path object.
+            continue                                        # Silently skip settings we do not recognize. If the field is a Path, convert the string from TOML into a Path.
+        if isinstance(getattr(cfg, key), Path):             # If the default value for this key is a Path, we expect the user to provide a string path in the TOML, which we convert to a Path object.
             value = Path(value) 
-        setattr(cfg, key, value) # Override the default with the value from the TOML file
+        setattr(cfg, key, value)                            # Override the default with the value from the TOML file
     return cfg
