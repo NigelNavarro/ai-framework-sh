@@ -16,7 +16,7 @@
   chunk_size    = 1000
   chunk_overlap = 200
   top_k         = 5
-  relevance_threshold = 0.0
+  relevance_threshold = 0.55
 
 
   # --- Agent loop ---

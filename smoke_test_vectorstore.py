@@ -7,7 +7,7 @@ It ingests a small batch of book chunks, embeds them using nomic-embed-text, sto
 then queries the store with a real question, confirming the nearest chunks come back as Chunk objects.
 
 Note: add() is not an UPSERT. Running it twice will error our on duplicate IDs.
-To re-run cleanly, delete the data/chroma folder first.
+To re-run cleanly, delete the 'knowledge_base' collection first (see the delete_collection command), not the whole data/chroma folder.
 
 Run: .venv/bin/python smoke_test_vectorstore.py
 """
@@ -23,7 +23,9 @@ model = OllamaModelClient(cfg)
 store = ChromaVectorStore(cfg)
 
 # Ingest - Read & Chunk th books, then take a small subset to keep the test fast.
-books = Path("/Users/nigelnavarro/gitRepos/bookbot/books")
+# Older: books = Path(".../bookbot/books")
+# 11-14-26: New path has been updated to live within this repository moving forward
+books = Path("tests/books")
 all_chunks = ingest_folder(books, cfg.chunk_size, cfg.chunk_overlap) # Ingest the books into chunks.
 chunks = all_chunks[:20] # Take the first 20 chunks for a quick test. These are our "documents" that we want to store and retrieve.
 print(f"Ingested {len(all_chunks)} chunks total. Using the first {len(chunks)} for this test.\n")
