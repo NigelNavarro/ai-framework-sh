@@ -1,22 +1,72 @@
 [
     {
         "question": "Who created the creature Frankenstein?",
+        "expected_route": "knowledge",
         "expected_source": "frankenstein.txt"
     },
     {
         "question": "What does Victor Frankenstein pursue across the ice at the end?",
+        "expected_route": "knowledge",
         "expected_source": "frankenstein.txt"
     },
     {
         "question": "What whale is Captain Ahab obsessed with hunting?",
+        "expected_route": "knowledge",
         "expected_source": "mobydick.txt"
     },
     {
         "question": "Who is the narrator of Moby Dick?",
+        "expected_route": "knowledge",
         "expected_source": "mobydick.txt"
     },
     {
         "question": "Why does Elizabeth first reject Mr. Darcy's proposal?",
+        "expected_route": "knowledge",
         "expected_source": "prideandprejudice.txt"
+    },
+    {
+        "question": "Where does Victor Frankenstein go to university?",
+        "expected_route": "knowledge",
+        "expected_source": "frankenstein.txt"
+    },
+    {
+        "question": "Who is Queequeg?",
+        "expected_route": "knowledge",
+        "expected_source": "mobydick.txt"
+    },
+    {
+        "question": "Who does Lydia Bennet run away with?",
+        "expected_route": "knowledge",
+        "expected_source": "prideandprejudice.txt"
+    },
+    {
+        "question": "Who does Mr. Bingley fall in love with?",
+        "expected_route": "knowledge",
+        "expected_source": "prideandprejudice.txt"
+    },
+    {
+        "question": "How do I change a flat tire on a car?",
+        "expected_route": "boundary",
+        "expected_source": null
+    },
+    {
+        "question": "Who painted the Mona Lisa?",
+        "expected_route": "boundary",
+        "expected_source": null
+    },
+    {
+        "question": "How does a blockchain work?",
+        "expected_route": "boundary",
+        "expected_source": null
+    },
+    {
+        "question": "What is the boiling point of water in Fahrenheit?",
+        "expected_route": "boundary",
+        "expected_source": null
+    },
+    {
+        "question": "What are the rules for castling in chess?",
+        "expected_route": "boundary",
+        "expected_source": null
     }
 ]

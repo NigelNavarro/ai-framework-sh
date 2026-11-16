@@ -29,8 +29,9 @@ class Config:
     chunk_size: int = 1000                      # characters per chunk when splitting documents for RAG
     chunk_overlap: int = 200                    # characters shared betweeen chunks to preserve context
     top_k: int = 5                              # how many relevant chunks to retrieve for RAG per question
-    relevance_threshold: float = 0.55           # cosine similarity floor. Chunks scoring below it count as "not relevant". MODEL SPECIFIC. Re-calibrate when embed_model changes.
-                                                # 0.55 calibrated for nomic-embed-text
+    relevance_threshold: float = 0.60           # cosine similarity floor. Chunks scoring below it count as "not relevant". 
+                                                # MODEL SPECIFIC. Re-calibrate when embed_model changes.
+                                                # Current: 0.60 calibrated for nomic-embed-text
 
 
     # -- Agent loop ---
