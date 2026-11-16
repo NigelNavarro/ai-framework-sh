@@ -12,11 +12,12 @@ We describe the available tools to the model, and it will steer along these line
 
 We are specifically making it such that the tool calls are prompt-based and not native to whatever model functionality is available. By abstracting this behavior to be model agnostic, this ensures that the framework works with any instruction following model without having to call special APIs and or determine if the model supports any loop-like features. 
 """
-from __future__ import annotations # Store annotations as strings so modern hints (list[str], etc.) work without runtime cost.
+from __future__ import annotations                      # Store annotations as strings so modern hints (list[str], etc.) work without runtime cost.
 
 import json
 import time
 import uuid
+from dataclasses import dataclass, field                # Using for ToolCall and AgentRun
 from framework.models.base import ModelClient, Message
 from framework.tools.registry import ToolRegistry
 from framework.observability.trace import Tracer
@@ -69,13 +70,43 @@ def parse_tool_call(reply: str) -> dict | None:
         return data
     return None # If the parsed data is not a valid tool call, return None.
 
-def run_agent(client: ModelClient, registry: ToolRegistry, question: str, max_rounds: int = 5, tracer: Tracer | None = None) -> str: 
+@dataclass
+class ToolCall:
     """
-    Runs the agent loop. Think -> Act -> Observe. Returns the model's final answer.
+    One tool call the agent made during a run, and what came back.
+    """
+    name: str                   # The tool the model asked for (ex. 'search_knowledge')
+    arguments: dict             # The arguments the model passed (ex. {"query": "Who is Ahab?"}) 
+    observation: str            # The text the tool returned (what the model was shown)
+    error: str | None = None    # None on success, otherwise provide the error message.
+
+@dataclass
+class AgentRun:
+    """
+    The record of one agent run: the model's final answer plus every tool call the loop made and what each returned. 
+    Provenance labeling reads this record to decide where the answer came from. In other words, the label rests on what actually
+    happened in the loop as opposed to whatever the model claims happened in the event window.
+    """
+    answer: str                                                 # The final answer (or cap-reached fallback message)
+    run_id: str                                                 # The same short ID stamped on this run's trace events.
+    tool_calls: list[ToolCall] = field(default_factory=list)    # Every tool call, in order.
+    rounds_used: int = 0                                        # How many tool rounds ran before the answer.
+    capped: bool = False                                        # True when 'max_rounds' was hit without a final answer.
+
+def run_agent(client: ModelClient, registry: ToolRegistry, question: str, max_rounds: int = 5, tracer: Tracer | None = None) -> str:
+    """
+    Runs the agent loop and returns only the final answer text.
+    This is a thin wrapper over run_agent_with_record() for callers who do not need the agent record.
+    """
+    return run_agent_with_record(client, registry, question, max_rounds, tracer).answer
+
+def run_agent_with_record(client: ModelClient, registry: ToolRegistry, question: str, max_rounds: int = 5, tracer: Tracer | None = None) -> AgentRun: 
+    """
+    Runs the agent loop. Think -> Act -> Observe. Returns the model's final answer and every tool call made.
 
     Each round asks the model, then checks if it wants a tool. If not, the reply is the final answer.
     If yes, then we execute the tool, and feed the result back for the next round.
-    The loop stops when the model answers, or after max_rounds limit has been reached.
+    The loop stops when the model answers, or after the 'max_rounds' limit has been reached.
 
     Args:
         client: The model client used to communicate with the language model.
@@ -87,6 +118,7 @@ def run_agent(client: ModelClient, registry: ToolRegistry, question: str, max_ro
     run_id = uuid.uuid4().hex[:8]       # A short run ID (first 8 hex chars of a UUID) stamped on every event so the run can be filtered and replayed.
     tools_available = [schema["function"]["name"] for schema in registry.schemas()]
     run_start = time.perf_counter()
+    tool_calls: list[ToolCall] = []     # Every tool call this run makes, kept for provenance labeling.
 
     messages: list[Message] = [
         {"role": "system", "content": build_system_prompt(registry)},
@@ -116,7 +148,7 @@ def run_agent(client: ModelClient, registry: ToolRegistry, question: str, max_ro
                     "answer_chars": len(reply),
                     "latency_s": round(time.perf_counter() - run_start, 3),
                 })
-            return reply                        # Return the model's final answer.
+            return AgentRun(answer=reply, run_id=run_id, tool_calls=tool_calls, rounds_used=(round_num - 1))
 
         # Act -> If we have a valid tool call, extract the tool name and call.
         name = call.get("tool")
@@ -130,6 +162,7 @@ def run_agent(client: ModelClient, registry: ToolRegistry, question: str, max_ro
             error_msg = str(error)                          # Record the error message for tracing.
             observation = f"Tool Error: {error}"            # Handle any errors during tool execution.
         tool_latency = round(time.perf_counter() - tool_start, 3)
+        tool_calls.append(ToolCall(name=name, arguments=arguments, observation=observation, error=error_msg))
 
         if tracer:
             tracer.record({
@@ -155,4 +188,7 @@ def run_agent(client: ModelClient, registry: ToolRegistry, question: str, max_ro
             "rounds": max_rounds,
             "latency_s": round(time.perf_counter() - run_start, 3),
         })
-    return "I couldn't complete the request within the allowed number of tool rounds"
+    return AgentRun(
+        answer="I couldn't complete the request within the allowed number of tool rounds.",
+        run_id=run_id, tool_calls=tool_calls, rounds_used=max_rounds, capped=True,
+    )

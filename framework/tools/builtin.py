@@ -15,11 +15,21 @@ This does not run the model or the Retriever; it just builds the tools and regis
 """
 from __future__ import annotations # Store annotations as strings so modern hints (list[str], etc.) work without runtime cost.
 from pathlib import Path
+import re                           # Leveraging power of REGEX. Used to read search_knowledge's header lines back (see _KNOWLEDGE_HEADER).
 
 from framework.knowledge.retrieve import Retriever
 from framework.tools.registry import Tool
 from framework.memory.store import MemoryStore
 from framework.config import Config
+
+# The exact text each tool returns when it finds nothing. To ensure provenance, we need to know if a tool found something. 
+# We turn the no knowledge or no memory results into constants to help with the accuracy checks.
+NO_KNOWLEDGE_RESULT = "Nothing in the knowledge base is relevant to this question (no chunk met the relevance threshold)."
+NO_MEMORY_RESULT = "No relevant memories found."
+
+# The header line 'search_knowledge' writes above each chunk, e.g. "[3] frankenstein.txt (chunk 204):".
+# Captures the citation number and the filename. Must match the f-string in search_knowledge below.
+_KNOWLEDGE_HEADER = re.compile(r"^\[(\d+)\] (.+) \(chunk \d+\):$", re.MULTILINE)
 
 def make_search_knowledge_tool(retriever: Retriever) -> Tool:
     """
@@ -37,7 +47,7 @@ def make_search_knowledge_tool(retriever: Retriever) -> Tool:
         """
         chunks = retriever.retrieve(query) # Use the Retriever to get the most relevant chunks for the query.
         if not chunks:
-            return "Nothing in the knowledge base is relevant to this question (no chunk met the relevance threshold)."
+            return NO_KNOWLEDGE_RESULT
         
         # Formats the return
         # Example:
@@ -70,6 +80,19 @@ def make_search_knowledge_tool(retriever: Retriever) -> Tool:
         parameters=parameters,
         handler=search_knowledge,
     )
+
+def parse_knowledge_sources(observation: str) -> dict[int, str]:
+    """
+    Read a 'search_knowledge' result back into {citation number: filename}. Example:
+    
+    "[1] mobydick.txt (chunk 12):\n..." becomes {1: "mobydick.txt"}.
+
+    This is the reverse of the f-string inside make_search_knowledge_tool(), which writes those header lines. The two must agree on the format.
+    If that f-string changes, then '_KNOWLEDGE_HEADER' must also be updated to match (otherwise this definition returns nothing).
+    
+    An empty dict means that the result held no chunks (ex. NO_KNOWLEDGE_RESULT).
+    """
+    return {int(number): name for number, name in  _KNOWLEDGE_HEADER.findall(observation)}
 
 def make_remember_tool(store: MemoryStore) -> Tool:
     """
@@ -121,7 +144,7 @@ def make_recall_tool(store: MemoryStore) -> Tool:
         """
         facts = store.recall(query)
         if not facts:
-            return "No relevant memories found."
+            return NO_MEMORY_RESULT
         # One fact per line, numbered for clarity. The model can read this and decide which to use.
         return "\n".join(f"[{number}] {fact}" for number, fact in enumerate(facts, start=1))
 
