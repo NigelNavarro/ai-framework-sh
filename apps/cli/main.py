@@ -24,7 +24,8 @@ from framework.knowledge.ingest import SUPPORTED_EXTENSIONS, ingest_file, ingest
 from framework.knowledge.vectorstore import ChromaVectorStore
 from framework.knowledge.retrieve import Retriever
 from framework.agent.context import build_messages
-from framework.agent.loop import run_agent
+from framework.agent.loop import run_agent_with_record
+from framework.agent.provenance import Provenance, DOCUMENTS, label_provenance
 from framework.tools.registry import ToolRegistry
 from framework.tools.builtin import make_search_knowledge_tool, make_remember_tool, make_recall_tool, make_draft_document_tool
 from framework.memory.store import MemoryStore
@@ -143,6 +144,11 @@ def cmd_ask(config, question):
     for number, chunk in enumerate(chunks, start=1):
         print(f"  [{number}]  {Path(chunk.source).name}  (chunk {chunk.chunk_idx})")
     
+    # PROVENANCE - `ask` always answers from retrieved documents, so its label is built directly.
+    # dict.fromkeys() drops repeat filenames while keeping their first-seen order.
+    provenance = Provenance(sources=[DOCUMENTS], documents=list(dict.fromkeys(Path(c.source).name for c in chunks)))
+    print(f"\nProvenance: {provenance.summary()}")
+    
     # TRACE - Record what was retrieved and why for observability.
     tracer.record({
         "command": "ask",
@@ -151,6 +157,7 @@ def cmd_ask(config, question):
         "retrieved": [f"{Path(c.source).name} (chunk {c.chunk_idx})" for c in chunks],
         "answer_chars": len(answer),
         "latency_s": round(latency_s, 3),
+        "provenance": provenance.label,
     })
 
 def cmd_agent(config, question):
@@ -175,8 +182,20 @@ def cmd_agent(config, question):
     registry.register(make_draft_document_tool(config))         # Register the draft_document tool so the model can use it to create draft documents.
 
     # run_agent records its own trace (agent_start, tool_call, agent_end) through the tracer.
-    answer = run_agent(client, registry, question, config.max_tool_rounds, tracer=tracer) 
-    print(f'\n{answer}\n')
+    run = run_agent_with_record(client, registry, question, config.max_tool_rounds, tracer=tracer)
+
+    # PROVENANCE - Label the answer from what the loop observed, not what the model claims it observed.
+    provenance = label_provenance(run)
+    print(f"\n{run.answer}\n")
+    print(f"Provenance: {provenance.summary()}")
+
+    tracer.record({
+        "type": "provenance",
+        "run_id": run.run_id,       # Same ID as this run's agent_start / tool_call / agent_end events.
+        "label": provenance.label,
+        "documents": provenance.documents,
+        "boundary_hit": provenance.boundary_hit,
+    })
 
 def cmd_memory(config, action, memory_id):
     """

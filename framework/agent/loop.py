@@ -43,6 +43,10 @@ def build_system_prompt(registry: ToolRegistry) -> str:
         "You will then receive the tool's result and may call another tool or answer.\n"
         "If you do not need a tool, respond with your answer in plain text, not JSON. "
         "Cite tool result by their [number] labels. If the results don't contain the answer, say so plainly. "
+        "\nThe user's questions are usually about their own documents. Before answering any question that the "
+        "documents might cover call 'search_knowledge' first, even if you think you already know the answer. "
+        "Answer from general knowledge only after a search finds nothing relevant, and say that the answer did "
+        "not come from the documents. "
     )
 
 def parse_tool_call(reply: str) -> dict | None:
@@ -69,6 +73,11 @@ def parse_tool_call(reply: str) -> dict | None:
     if isinstance(data, dict) and "tool" in data: # Check if the parsed data is a dictionary and contains the "tool" key, which indicates it's a tool call.
         return data
     return None # If the parsed data is not a valid tool call, return None.
+
+# In cases where the model replies with nothing at all (see the empty-reply check in the loop):
+EMPTY_REPLY_NUDGE = (
+    "Your last reply was empty. Either call a tool by responding with only the JSON object or answer the question in plain text."
+)
 
 @dataclass
 class ToolCall:
@@ -138,6 +147,15 @@ def run_agent_with_record(client: ModelClient, registry: ToolRegistry, question:
     for round_num in range(1, max_rounds + 1):  # Loop for each interaction round with the agent.
         reply = client.chat(messages)           # Think -> Get the model's reply based on the current conversation history.
         call = parse_tool_call(reply)           # Try to parse the model's reply as a tool call.
+
+        # An empty reply is neither a tool call nor an answer. Thinking models occasionally spend the whole turn on hidden reasoning and return no visible text. 
+        # Instead of returning nothing (ex. ""), we are going to ask again. 
+        # This does use up a round, so a model that keeps replying with nothing will still stop at 'max_rounds'.
+        if not reply.strip():
+            if tracer:
+                tracer.record({"type": "empty_reply", "run_id": run_id, "round": round_num})
+            messages.append({"role": "user", "content": EMPTY_REPLY_NUDGE})
+            continue
 
         if call is None:               # If the model's reply is not a tool call, we assume it's the final answer.
             if tracer:

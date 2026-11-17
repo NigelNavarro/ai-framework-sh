@@ -191,3 +191,21 @@ def test_parse_knowledge_sources_reads_the_formatter_back():
     """
     observation = make_search_knowledge_tool(FakeRetriever([AHAB, VICTOR])).handler(query="anything")
     assert parse_knowledge_sources(observation) == {1: "mobydick.txt", 2: "frankenstein.txt"}
+
+def test_empty_reply_is_retried_not_returned():
+    """
+    A thinking model can return an empty reply. The loop must ask again instead of treating nothing (ex. "") as the answer.
+    """
+    run = run_agent_with_record(ScriptedClient(["", "Paris."]), make_registry(), "Capital of France?")
+
+    assert run.answer == "Paris."
+    assert run.capped is False
+
+def test_only_empty_replies_stop_at_the_round_cap():
+    """
+    A model that never says anything still stops at max_rounds, labeled "no answer".
+    """
+    run = run_agent_with_record(ScriptedClient(["", ""]), make_registry(), "Q?", max_rounds=2)
+
+    assert run.capped is True
+    assert label_provenance(run).label == NO_ANSWER
