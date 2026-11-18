@@ -2,20 +2,23 @@
 
 A self-hosted AI assistant **framework**, a reusable Python substrate for building local, private AI assistants on top of [Ollama](https://ollama.com).
 
-This is a personal project: a learning-driven, from-scratch build of the core pillars an AI assistant needs: a model runtime, retrieval-augmented generation (RAG) over your own
-documents, and an agent loop with tools, durable memory, and observability. A command-line app is its first consumer.
+This is a personal project: a learning-driven, from-scratch build of the core pillars an AI assistant needs: a model runtime, retrieval-augmented generation (RAG) over your own documents, and an agent loop with tools, durable memory, and observability. A command-line app is its first consumer.
 
-> **Status:** ✅ **Working MVP (`v0.2`).** All core pillars (model runtime, RAG, agent loop, tools, memory, and observability) are built, tested, and verified
-> end-to-end. It runs entirely locally and stays within a read-only + drafting safety envelope (no real-world actions). Built as a learning project; capable and
-> usable, but not yet hardened for production or multi-user use.
+> **Status:** ✅ **`v0.3`: Harden the Core.** All core pillars (model runtime, RAG, agent loop, tools, memory, and
+> observability) are built, tested, and verified end-to-end, and v0.3 makes them measurable: relevance scores with a
+> knowledge boundary, provenance on every answer, and a golden-set eval with a grounding judge. It runs entirely
+> locally and stays within a read-only + drafting safety envelope (no real-world actions). Built as a learning
+> project; capable and usable, but not yet hardened for production or multi-user use.
 
 ## What it can do
 
+- **Knows what it doesn't know:** retrieval scores every chunk, and when nothing in your documents is relevant enough, it says so instead of stretching unrelated text into an answer.
+- **Labels where every answer came from:** each answer ends with a provenance line (documents, memory, or general knowledge), decided by the framework from what actually happened, not by the model's own claim.
 - **Cited Q&A over your documents:** ingest a folder of notes, ask questions, and get answers grounded strictly in those sources with `[n]` citations (and a plain "not in the sources" when the answer isn't there, instead of a hallucination).
 - **An agent that decides:** in `agent` mode the model chooses when to search your documents, save or recall a memory, or draft a document, through a bounded tool-calling loop.
 - **Durable, inspectable memory:** tell it a preference or fact once and it persists across sessions, stored in a human-readable file you can list, review, and delete.
 - **Safe drafting:** it writes drafts (emails, notes) to a local folder for you to review. It never sends or shares anything.
-- **Observability by default:** every model call is appended to a per-day JSONL trace, so any answer can be reconstructed after the fact.
+- **Observability by default:** every model call and every agent step (each tool call, its result, and any error) is appended to a per-day JSONL trace under a shared run id, so any answer can be reconstructed and replayed after the fact.
 
 ## This is a framework, not an application
 
@@ -58,13 +61,15 @@ pip install -e ".[dev]"
 
 ## Configuration
 
-Settings live in `framework/config.py` as typed defaults, the framework runs with **zero configurations** out of the box (model names, paths, chunk size, `top_k`, the agent's `max_tool_rounds`). To override anything, copy the example and edit it:
+Settings live in `framework/config.py` as typed defaults, the framework runs with **zero configurations** out of the box (model names, paths, chunk size, `top_k`, `relevance_threshold`, the agent's `max_tool_rounds`). To override anything, copy the example and edit it:
 
 ```bash
 cp config.example.toml config.toml
 ```
 
-`config.toml` is gitignored; `config.example.toml` is the committed template showing every available option. Because the model name lives in config, swapping models is a config edit, not a code change.
+`config.toml` is gitignored; `config.example.toml` is the committed template showing every available option. The model name lives in the config, making swapping models therefore a configuration change as opposed to a code change.
+
+`relevance_threshold` (default `0.60`) is the cosine similarity a chunk must reach to count as relevant. It is specific to the embedding model: if you change `embed_model`, re-ingest your documents and re-calibrate it with `eval/run_eval.py --threshold`.
 
 ## Usage
 
@@ -94,14 +99,19 @@ Memory and trace commands are **human controls** and do not need Ollama running:
 
 # See what the assistant recently did (the observability trail)
 .venv/bin/python apps/cli/main.py trace tail -n 10
+
+# Replay one agent run, step by step (the run id is shown in trace tail)
+.venv/bin/python apps/cli/main.py trace show <run-id>
 ```
 
 ### `ask` vs. `agent`
 
 Both answer questions, but differently:
 
-- **`ask`** _always_ retrieves and prints a `Sources:` list. You get deterministic, guaranteed citations. Good when you want a grounded answer every time.
-- **`agent`** lets the model _decide_ whether to search, remember, recall, or draft. A general question is answered directly; a document question triggers a search. This is the agentic path.
+- **`ask`** _always_ retrieves and prints a `Sources:` list. You get deterministic, guaranteed citations. Good when you want a grounded answer every time. If nothing in the knowledge base is relevant, it says so without calling the model.
+- **`agent`** lets the model _decide_ whether to search, remember, recall, or draft. It is told to search your documents first, and falls back to general knowledge only when the search finds nothing relevant. This is the agentic path.
+
+Both end with a `Provenance:` line saying where the answer's information came from.
 
 ## Where your data lives
 
@@ -124,39 +134,52 @@ The suite is hermetic (a stub `ModelClient` stands in for Ollama, temp dirs for 
 .venv/bin/pytest -v
 ```
 
-It covers the tool registry, the memory store round-trip, and a safety check that the built-in toolset stays read-only / write-only-inside-`data/` (including that `draft_document` cannot escape its folder via a path-traversal filename).
+It covers the tool registry, the memory store round-trip, retrieval ranking, cosine relevance scores and the threshold, provenance labeling, the grounding judge, and a safety check that the built-in toolset stays read-only / write-only-inside-`data/` (including that `draft_document` cannot escape its folder via a path-traversal filename).
+
+## Evaluation
+
+`tests/` checks that the code works; `eval/` measures how well the live system performs, against a golden set of questions with known answers (`eval/golden_qa.json`). Both scripts need Ollama running and an ingested corpus, and only read:
+
+```bash
+.venv/bin/python eval/run_eval.py        # retrieval: right book found, out-of-corpus questions refused
+.venv/bin/python eval/run_grounding.py   # full agent answers, graded by the grounding judge
+```
+
+See [`eval/README.md`](eval/README.md) for how to read the output and calibrate the threshold.
 
 ## Architecture
 
 A **modular monolith**: one local app, internally decoupled into independent pillars behind clean interfaces.
 
 ```text
-apps/cli/main.py     chat · ingest · ask · agent · memory · trace   (the app)
-        │  depends on ↓ (never the reverse)
-framework/
-  agent/        context.py (grounded prompts) · loop.py (the tool-using loop)
-  tools/        registry.py · builtin.py (search / remember / recall / draft)
-  knowledge/    ingest.py · retrieve.py · vectorstore/ (Chroma behind an interface)
-  memory/       store.py (dual: memory.json + a Chroma collection)
-  models/       base.py (ModelClient interface) · ollama.py (implementation)
-  config.py     typed settings   ·   observability/trace.py  (JSONL audit)
+apps/cli/main.py      the app: chat · ingest · ask · agent · memory · trace
+eval/                 live measurement: golden_qa.json · run_eval.py · run_grounding.py
+
+framework/            the reusable core (both apps/ and eval/ import from it; it imports from neither)
+  agent/              context.py (grounded prompts) · loop.py (the tool-using loop)
+                      provenance.py (where an answer came from) · grounding.py (the grounding judge)
+  tools/              registry.py · builtin.py (search / remember / recall / draft)
+  knowledge/          ingest.py · retrieve.py (scores + threshold) · vectorstore/ (Chroma behind an interface)
+  memory/             store.py (dual: memory.json + a Chroma collection)
+  models/             base.py (ModelClient interface) · ollama.py (implementation)
+  observability/      trace.py (JSONL audit)
+  config.py           typed settings
 ```
 
 Each pillar has its own README with detailed design notes. Full map: [`docs/DESIGN.md`](docs/DESIGN.md).
 
 ## Safety & autonomy
 
-Every capability sits at **Autonomy Levels 0 to 2** (chat, read-only, local drafting), and nothing acts on the outside world. The one writing tool (`draft_document`) is confined to `data/drafts/`. Higher autonomy (sending, scheduling, external access) is deliberately out of scope for this MVP, and would sit behind approval gates and an audit log. The full governance model (the ten questions of what to log, what to never access, what would need approval) is in [`docs/DECISIONS.md`](docs/DECISIONS.md).
+Every capability sits at **Autonomy Levels 0 to 2** (chat, read-only, local drafting), and nothing acts on the outside world. The one writing tool (`draft_document`) is confined to `data/drafts/`. Higher autonomy (sending, scheduling, external access) is deliberately out of scope for this version, and would sit behind approval gates and an audit log. The full governance model (the ten questions of what to log, what to never access, what would need approval) is in [`docs/DECISIONS.md`](docs/DECISIONS.md).
 
-## Beyond the MVP
+## What's next
 
-Deferred by design, in rough priority order:
+Deferred by design, in rough priority order (see [`ROADMAP.md`](ROADMAP.md)):
 
-1. **Web / voice front-ends:** a second app on the same framework, unchanged.
-2. **Supervised actions (Level 3):** a write-capable tool behind an approval gate and
-   audit log.
-3. **Richer, per-tool-call tracing:** replay the agent loop step by step.
-4. **RAG quality:** reranking, PDF ingestion, a golden-Q&A regression set.
+1. **Supervised actions (Level 3):** a write-capable tool behind an approval gate and audit log.
+2. **External knowledge sources (governed):** consult something like web search when a question falls outside your documents, with source labeling and injection safeguards.
+3. **Web / voice front-ends:** a second app on the same framework, unchanged.
+4. **RAG quality:** reranking, PDF ingestion, and a fresh golden set.
 5. **Memory:** in-place `memory edit`, categories, optional expiry.
 
 ## Documentation
@@ -164,3 +187,5 @@ Deferred by design, in rough priority order:
 - [`docs/DESIGN.md`](docs/DESIGN.md): architecture and the app/framework boundary
 - [`docs/DECISIONS.md`](docs/DECISIONS.md): the ten governance questions, answered
 - Per-pillar READMEs under `framework/*/`: detailed design notes for each module
+- [`ROADMAP.md`](ROADMAP.md) and [`CHANGELOG.md`](CHANGELOG.md): where it's headed, and what shipped when
+- [`eval/README.md`](eval/README.md): the golden set and the two eval scripts

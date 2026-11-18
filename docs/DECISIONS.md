@@ -161,9 +161,11 @@ Every `chat` / `ask` / `agent` command appends one event to the logs with the fo
 
 ### Mechanism
 
-Currently, for a base release, I elected that command level logging was enough for a level two system. Since the current scope of the assistant is that it takes no outward action, I've deferred recording each individual tool call and any failures in a fixed shape pattern like your standard typical programmer application. I am using `Tracer`, but lightly. `Tracer.record` simply takes a plain dict, provides a timestamp onto it, and writes the log.
+For the v0.2 base release, I elected that command level logging was enough for a level two system. Since the current scope of the assistant is that it takes no outward action, I've deferred recording each individual tool call and any failures in a fixed shape pattern like your standard typical programmer application. I am using `Tracer`, but lightly. `Tracer.record` simply takes a plain dict, provides a timestamp onto it, and writes the log.
 
 As this project climbs the autonomy ladder, the logging should grow from a command level record into an action level audit trail. In my daily work life, I often deal with investigating logging, and so I'm generally familiar on what to look for. But otherwise this would be a new category for me to create something like this. At a high level, I can imagine logging every tool call that the agent makes. Perhaps the entire run of the agentic loop can be replayed step by step rather than inferring what may have occurred from the final answer. If I were to pursue this, I would want to always be able to answer clearly what the assistant did on the user's behalf and whether or not it was approved by the user. It is an interesting balance because at some point there would be additional considerations that need to be made for overall retention and redaction of log data.
+
+**Update (v0.3).** The action-level trail described above now exists for the agent. Every agent run carries a short `run_id`, and the loop records an `agent_start` event, a `tool_call` event for each tool (arguments, a preview of the result, latency, and an `error` field), and an `agent_end` or `cap_reached` event, plus `empty_reply` when the model returns nothing and a `provenance` event with the answer's label. `trace show <run-id>` replays one run in order. `ask` and `chat` still write one record per command.
 
 ---
 
@@ -192,6 +194,7 @@ With that said, there are some guardrails that I have applied within this Level 
 2. **Bad tool calls.** Inside of the agent loop, a malformed tool request is caught (ex. unknown tool name, incorrect arguments) and turned into an error observation that is fed back to the model, so that a single bad call doesn't end up crashing the entire run. The idea is that the model can adjust during the next round.
 3. **Invalid states.** There are fail fast guards which stop bad states at the source with clear messages rather than letting them corrupt data. For example: `add`/`recall` on a memory store built without a model defined raises an error immediately. Another example: An embedding-model mismatch on the vector store raises an error with a "re-index required" instruction instead of silently returning garbage.
 4. **Low-risk local writes.** Memory and draft writes are simple and contained. A crash mid-write can at worst fail to save a draft or a memory.
+5. **Empty replies.** A thinking model can return no visible text. The loop treats an empty reply as neither an answer nor a tool call, nudges the model, and tries again; the retry uses up a round, so the `max_tool_rounds` cap still applies.
 
 If this project continues into the supervised action level of autonomy (Level 3) it will likely be that each tool needs its own recovery plan on how to detect a partial failure, how to undo or compensate, and how to record the attempt. It is also very likely that error handling will have to be designed alongside the approval gate and the per-action logging behavior. This is the only way that I can see that supervised actions within the AI framework are considered safe.
 
@@ -210,6 +213,8 @@ In terms of correctness, I designed it such that answers provided by the assista
 3. **Across session recall with citation.** Data that the user decides to save to memory is persistent across multiple sessions until the user decides to delete it. This was tested by providing one session a sentence to remember, and then having another session recall what that sentence was from memory.
 
 This opens up an interesting retrospective in that correctness is currently checked manually at milestones. It's not as if there's some sort of automated regression set of questions that score the model's answers over time. This would be something that does need to be durable over time. Perhaps a "golden" set of Q&A questions that provide a handful of question/expected source pairs would be useful here to help detect any possible regression. Other ideas to ensure utmost quality could be automated grounding checks, and safety/red-team prompts that probe whether the model can be talked into misusing a tool.
+
+**Update (v0.3).** Two of the three ideas above are now built. A golden Q&A set (`eval/golden_qa.json`) pairs 9 in-corpus questions with their expected source and 5 out-of-corpus questions with the expectation that nothing is retrieved. `eval/run_eval.py` scores retrieval against it, and `eval/run_grounding.py` runs the agent on every question and grades each answer with a deterministic grounding judge (`framework/agent/grounding.py`): did it take the expected route, does every `[n]` point to a chunk that was actually retrieved, and does it cite the expected book. Every answer also carries a provenance label decided by the framework, not the model. Correctness is still reviewed at milestones, but it is now measured the same way each time. Safety and red-team prompts remain future work.
 
 ---
 

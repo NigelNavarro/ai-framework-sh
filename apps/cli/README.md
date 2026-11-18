@@ -16,6 +16,7 @@ The command-line app is the framework's first _consumer_. The app/framework boun
 | `agent "<question>"`         | Agentic loop; the model chooses which tools to call.             | Level 1-2       |
 | `memory list \| delete <id>` | Human inspect/forget controls for stored memory.                 | (management)    |
 | `trace tail [-n N]`          | Show the most recent trace events.                               | (observability) |
+| `trace show <run-id>`        | Replay one agent run's events in order.                          | (observability) |
 
 ## Design notes
 
@@ -39,9 +40,11 @@ This file grew the most over the project, from a single REPL into a six-verb CLI
 
 This update deepens what the CLI can see and replay.
 
-- **The agent now traces itself.** `cmd_agent` passes its `Tracer` into `run_agent` so the loop records structured events (`agent_start`, one `tool_call` per tool, and a terminal `agent_end` or `cap_reached`), all sharing a `run_id`. The older post-hoc summary was removed in favor of this richer event capture option.
+- **The agent now traces itself.** `cmd_agent` passes its `Tracer` into `run_agent_with_record` so the loop records structured events (`agent_start`, one `tool_call` per tool, and a terminal `agent_end` or `cap_reached`), all sharing a `run_id`. The older post-hoc summary was removed in favor of this richer event capture option.
 - **`trace show <run_id>` replays one run.** Alongside `trace tail`, this new action gathers every event carrying a given `run_id` across all trace files, sorts them by time, and prints them in order, reconstructing a single run step by step.
 - **`print_event` is shared.** The per-event formatting was extracted from the tail loop into a `print_event(event)` helper, so `tail` and `show` display events identically instead of keeping two copies of the code.
+- **Every answer is labeled.** `ask` and `agent` print a `Provenance:` line under the answer (documents, memory, general knowledge, or no answer), and `agent` records a `provenance` trace event under the run's `run_id`.
+
 
 ### Python concepts to highlight in this milestone
 

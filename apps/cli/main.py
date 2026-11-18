@@ -9,6 +9,7 @@ Subcommands:
     agent "<question>"      The agentic loop: the model decides which tools to use (search_knowledge, remember, recall, draft_document)
     memory list|delete <id> Inspect or forget stored memories
     trace tail [-n N]       Show the most recent trace events (default 10)
+    trace show <run-id>     Replay one agent run's events in order
 
 Run: .venv/bin/python apps/cli/main.py <command> [args]
 """
@@ -165,7 +166,7 @@ def cmd_agent(config, question):
     Answer a question using the agentic loop.
     The model decides whether to call `search_knowledge` (whereas cmd_ask always calls it). 
     The model can call the tool multiple times, or not at all, and can also answer without calling it.
-    Implementation is similar to cmd_ask, but the retrieval is wrapped as a tool, and run_agent() steers the behavioral loop (think -> act -> observe -> repeat).
+    Implementation is similar to cmd_ask, but the retrieval is wrapped as a tool, and run_agent_with_record() steers the behavioral loop (think -> act -> observe -> repeat).
     """
     client = OllamaModelClient(config)
     store = ChromaVectorStore(config)
@@ -181,7 +182,7 @@ def cmd_agent(config, question):
     registry.register(make_recall_tool(memory))                 # Register the recall tool so the model can call it to retrieve facts from memory.
     registry.register(make_draft_document_tool(config))         # Register the draft_document tool so the model can use it to create draft documents.
 
-    # run_agent records its own trace (agent_start, tool_call, agent_end) through the tracer.
+    # The loop records its own trace (agent_start, tool_call, agent_end) through the tracer.
     run = run_agent_with_record(client, registry, question, config.max_tool_rounds, tracer=tracer)
 
     # PROVENANCE - Label the answer from what the loop observed, not what the model claims it observed.
@@ -296,6 +297,8 @@ def main():
     )
     subparsers = parser.add_subparsers(dest="command", required=True)   # Create a subparser for each subcommand (e.g. "chat", "ingest", "ask")
 
+    # Register each subcommand (chat, ingest, ask, agent, memory, trace) before parsing.
+    
     # Register the "chat" subcommand (ingest/ask will get added here in the future)
     subparsers.add_parser("chat", help="Start an interactive chat REPL.")
 

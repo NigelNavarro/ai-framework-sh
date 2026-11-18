@@ -16,21 +16,11 @@ does, or carefully expand autonomy, in that order of priority.
 - **v0.2: MVP.** Agent loop with prompt-based tool calling, durable memory
   (remember/recall + human controls), safe local drafting, observability tracing, a
   hermetic test suite, and full documentation. (Autonomy Levels 0 to 2.)
+- **v0.3: Harden the Core.** Per-run tracing with replay (`trace show`), cosine relevance scores with
+  a calibrated knowledge boundary, provenance labels on every answer, a golden Q&A set, a retrieval
+  eval, and a route-aware grounding judge. (Autonomy Levels 0 to 2.)
 
 ## Planned
-
-- **v0.3: Harden the Core (Trust & Depth).** Make the anchor measurably good and see
-  everything the agent does, before expanding power.
-  - Observability depth: per-tool-call tracing with a run-id, and step-by-step replay of
-    an agent run (the prerequisite for supervised actions).
-  - RAG evaluation: a golden Q&A set, a retrieval regression check, and a route-aware
-    grounding judge that grades answers instead of passing or failing them. Optional:
-    reranking, PDF ingestion.
-  - Knowledge boundary and provenance: retrieval returns relevance scores so the framework
-    can tell when nothing in the corpus applies, and every answer is labeled with the
-    source it came from (documents, memory, or the model's own general knowledge). This
-    prepares for additional sources without adding any.
-  - Stays within Autonomy Levels 0 to 2. No new outward capability, and no network access.
 
 - **v0.4: Supervised Actions (Level 3).** The first action that reaches beyond
   `data/drafts/`, behind an explicit approval gate and audit log: the agent proposes, the
@@ -54,6 +44,8 @@ does, or carefully expand autonomy, in that order of priority.
   relevant memories into context, dedup, optional expiry.
 - **Pluggable vector-store backend** (for example a server-based or SQL/distributed store),
   enabled by the existing `VectorStore` interface.
+- **RAG quality:** reranking, PDF ingestion, and a fresh golden set (the current one has been used
+  for tuning).
 
 _Dates are intentionally omitted; this is a learning project and milestones ship when they
 are ready and verified._

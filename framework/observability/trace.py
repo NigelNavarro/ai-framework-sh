@@ -2,7 +2,7 @@
 Author: Nigel J. Navarro
 
 Observability: Model Call Tracing & History
-Every notable event (a model call, retrieval, or toll call) is recorded as one JSON line in the <data_dir>/trace/<date>.jsonl file. This is a simple, append-only log of what happened, when, and with what details. Nothing that the framework does has to be invisible, and data can be used for debugging, monitoring, or analysis.
+Every notable event (a model call, retrieval, or tool call) is recorded as one JSON line in the <data_dir>/traces/<date>.jsonl file. This is a simple, append-only log of what happened, when, and with what details. Nothing that the framework does has to be invisible, and data can be used for debugging, monitoring, or analysis.
 """
 from __future__ import annotations
 import json

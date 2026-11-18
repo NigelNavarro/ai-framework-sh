@@ -5,9 +5,13 @@ Built-In Tools
 Tool objects are built here, then registered once. They sit in the registry until the model chooses to call one.
 
 The current version builds the following tools:
-  - "search_knowledge": Wraps the existing Retriever as a Tool so the model can choose to search the knowledge base for relevant information to answer a question
-  - "make_remember_tool": Bound to MemoryStore, this lets the model save a durable fact/preference mid-conversation.
-  - "make_recall_tool": Bound to MemoryStore, this lets the model look up previously saved facts by meaning (semantic recall)
+  - "search_knowledge": Wraps the existing Retriever as a Tool so the model can choose to search the knowledge base for relevant information to answer a question.
+  - "remember": Bound to MemoryStore, this lets the model save a durable fact/preference mid-conversation.
+  - "recall": Bound to MemoryStore, this lets the model look up previously saved facts by meaning (semantic recall).
+  - "draft_document": Writes a draft file inside data/drafts/ and nothing else (it never sends anything).
+
+It also defines the fixed "nothing found" replies (NO_KNOWLEDGE_RESULT, NO_MEMORY_RESULT) and parse_knowledge_sources(), which reads a search_knowledge result back into {citation number: filename} 
+for provenance and the grounding judge.
 
 This is the bridge between our framework's capabilities and the model's ability to call them. 
 The model sees only the tool's schema (name, description, parameters) and calls it by name with arguments. The framework handles the rest. 

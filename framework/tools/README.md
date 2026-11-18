@@ -31,6 +31,7 @@ Tools are what let the _model_ reach the framework's capabilities. Each tool pai
 - **Schema name must match handler parameter.** The model sends arguments keyed by the schema's names (for example, `{"query": "Frankenstein"}`), and the registry runs `handler(**arguments)`, equivalent to `search_knowledge(query="Frankenstein")`. So the two must agree.
 - **Handlers return a confirmation, not silence.** A tool's return value goes back into the model's context as an observation. `remember` returns `"Saved to memory: ..."` (rather than the raw id from `store.add`) so the model can tell the user it acknowledged and will remember.
 - **`draft_document`, the first two-argument tool.** It takes `filename` and `content`. Like every tool it bundles a name, a description (why and when to use it), a parameter schema (what the model reads to know what to send), and a handler (the function that runs). It also sanitizes the filename so it cannot escape `data/drafts/` (verified by the safety tests).
+- **"Nothing found" is a named constant.** `search_knowledge` and `recall` return `NO_KNOWLEDGE_RESULT` and `NO_MEMORY_RESULT` when they find nothing, and `parse_knowledge_sources()` reads a search result back into {citation number: filename}. Provenance and the grounding judge depend on both, so they live next to the code that writes them.
 
 ## Evolution
 

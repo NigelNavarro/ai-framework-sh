@@ -16,5 +16,5 @@ The model runtime, kept behind an interface so it is a replaceable component. Th
 
 ## Related
 
-- **Consumed by:** `knowledge/retrieve.py` (embeds queries), `memory/store.py` (embeds facts), and `agent/loop.py` / `agent/context.py` (chat).
+- **Consumed by:** `knowledge/retrieve.py` (embeds queries), `memory/store.py` (embeds facts), and `agent/loop.py` plus the CLI's `ask` and `chat` commands (chat). `agent/context.py` only builds the messages; it does not call the model.
 - **Governance:** [DECISIONS.md §10: Which component should be replaceable first?](../../docs/DECISIONS.md#10-which-component-should-be-replaceable-first-the-model-the-ui-the-vector-store-the-tool-layer-or-the-orchestration)
